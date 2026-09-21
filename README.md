@@ -35,3 +35,9 @@ npm run deploy
 ```
 
 `test:rules` erwartet installierte Emulatoren. Hosting rewritet alle Routen (`/invite/:code`, `/room/:id`) auf die SPA. Das PWA-Update wird als Prompt angeboten statt eine laufende Hand automatisch neu zu laden. Functions benötigen für Produktion üblicherweise den Firebase-Blaze-Tarif. Live-Spielzustand wird nie offline als authoritative State behandelt.
+
+## GitHub Pages
+
+GitHub Pages muss ausschließlich das erzeugte `dist`-Verzeichnis aus dem Branch `gh-pages` veröffentlichen. Dadurch werden nicht versehentlich die TypeScript-Quelldateien aus `main` ausgeliefert. Für den Pages-Build wird `GITHUB_PAGES=true npm run build` verwendet; damit erhält die App automatisch den Repository-Basispfad `/Poker-Chips-Online/`. Eine Kopie von `index.html` als `404.html` ermöglicht direkte Aufrufe der Einladungs- und Raumrouten.
+
+Lege die fünf `VITE_FIREBASE_*`-Werte aus `.env.example` zusätzlich als GitHub Actions Repository Secrets an. Ohne diese Konfiguration wird die Oberfläche zwar ausgeliefert, das Erstellen und Betreten von Räumen kann aber keine Verbindung zu Firebase herstellen.
