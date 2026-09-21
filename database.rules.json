@@ -1,0 +1,1 @@
+{"rules":{"poker":{"v1":{"rooms":{"$roomId":{".read":"auth != null && data.child('members').child(auth.uid).exists()",".write":false,"presence":{"$uid":{"$connection":{".write":"auth != null && auth.uid === $uid && root.child('poker/v1/rooms/'+$roomId+'/members/'+auth.uid).exists()",".validate":"newData.val() === true || !newData.exists()"}}}}}}}}}

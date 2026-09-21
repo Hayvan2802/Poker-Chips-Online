@@ -1,0 +1,1 @@
+{"hosting":{"public":"dist","ignore":["firebase.json","**/.*","**/node_modules/**"],"rewrites":[{"source":"**","destination":"/index.html"}]},"database":{"rules":"database.rules.json"},"functions":{"source":"functions"},"emulators":{"auth":{"port":9099},"database":{"port":9000},"functions":{"port":5001},"hosting":{"port":5000},"ui":{"enabled":true}}}
