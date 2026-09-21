@@ -1,0 +1,1 @@
+<template><header><router-link to="/" class="brand"><span class="logo">PC</span><strong>Poker Chips</strong></router-link><span class="online">● Live synchronisiert</span></header><main><router-view/></main></template>
