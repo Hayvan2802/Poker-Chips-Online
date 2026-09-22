@@ -1,0 +1,15 @@
+[
+  {
+    "version": "0.0.1",
+    "date": "2026-09-22",
+    "title": "Ein richtiger Pokertisch für eure Runde",
+    "changes": [
+      "Runder Tisch, automatische Sitzplätze und sichtbare Chip-Einsätze.",
+      "Einstellbare Blind-Level mit Countdown und Erhöhung erst zur nächsten Hand.",
+      "30 Sekunden Bedenkzeit pro Zug, danach automatisches Passen.",
+      "Der Host bestätigt jeden Gewinn im Dialog, auch nach einem Fold.",
+      "Eigene sechsstellige Raumcodes oder automatisch erzeugte Codes.",
+      "Versionseinstellungen, Update-Prüfung und Cache-Neustart ohne Verlust deiner Spieleridentität."
+    ]
+  }
+]

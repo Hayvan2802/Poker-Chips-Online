@@ -1,12 +1,13 @@
 import { onValue, ref, remove, runTransaction, serverTimestamp, set, type Database } from 'firebase/database'
-import { actionKey, applyRequest, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from './roomCore'
+import { actionKey, applyRequest, applyTurnTimeout, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from './roomCore'
 
-export async function createRoom(db: Database, uid: string, name: string, actionId: string) {
+export async function createRoom(db: Database, uid: string, name: string, actionId: string, requestedCode?: string) {
   cleanName(name); actionKey(actionId)
+  if (requestedCode) roomCode(requestedCode)
   await waitForConnection(db)
   for (let attempt = 0; attempt < 12; attempt++) {
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${uid}:${actionId}:${attempt}`))
-    const code = String(100000 + new DataView(digest).getUint32(0) % 900000)
+    const code = requestedCode || String(100000 + new DataView(digest).getUint32(0) % 900000)
     try {
       const tx = await runTransaction(ref(db, `${ROOM_ROOT}/rooms/${code}`), current => {
         if (current) return current.hostUid === uid && current.creationAction === actionId ? current : undefined
@@ -15,8 +16,10 @@ export async function createRoom(db: Database, uid: string, name: string, action
       if (tx.committed) return {roomId: code}
     } catch (error) {
       // An occupied private code is intentionally unreadable to other users.
-      if ((error as {code?: string}).code !== 'PERMISSION_DENIED') throw error
+      const denied = error as {code?: string; message?: string}
+      if (!/permission[_-]denied/i.test(denied.code || denied.message || '')) throw error
     }
+    if (requestedCode) throw Error('Dieser Raumcode ist bereits belegt. Wähle einen anderen oder lass einen Code generieren.')
   }
   throw Error('Kein Raumcode verfügbar. Bitte erneut versuchen')
 }
@@ -58,6 +61,8 @@ export async function submitRequest(db: Database, uid: string, code: string, kin
 
 export function serveRoom(db: Database, uid: string, code: string, reportError: (error: unknown) => void = () => {}) {
   let stopped = false, processing = false
+  let serverOffset = 0
+  const stopOffset = onValue(ref(db, '.info/serverTimeOffset'), snapshot => { serverOffset = Number(snapshot.val()) || 0 })
   let inbox: Record<string, Record<string, RoomRequest>> = {}
   const processInbox = async () => {
     if (processing || stopped) return
@@ -76,7 +81,7 @@ export function serveRoom(db: Database, uid: string, code: string, reportError: 
           const tx = await runTransaction(ref(db, `${ROOM_ROOT}/rooms/${code}`), current => {
             if (!current) return null
             if (current.hostUid !== uid) { reason = 'Nur der Host darf den Tisch verwalten'; return }
-            try { return applyRequest(current as RoomState, request) }
+            try { return applyRequest(current as RoomState, request, Date.now() + serverOffset) }
             catch (error) { reason = error instanceof Error ? error.message : 'Anfrage abgelehnt'; return }
           }, {applyLocally: false})
           if (!tx.committed || !tx.snapshot.val()) throw Error(reason)
@@ -93,5 +98,21 @@ export function serveRoom(db: Database, uid: string, code: string, reportError: 
     inbox = snapshot.val() || {}
     void processInbox()
   }, reportError)
-  return () => { stopped = true; stop() }
+  let turnDeadline = 0
+  const stopClock = onValue(ref(db, `${ROOM_ROOT}/rooms/${code}`), snapshot => {
+    turnDeadline = snapshot.val()?.turnClock?.deadline || 0
+  }, reportError)
+  const timer = setInterval(async () => {
+    if (stopped || processing || !turnDeadline || Date.now() + serverOffset < turnDeadline) return
+    if (Object.values(inbox).some(requests => Object.keys(requests).length)) { void processInbox(); return }
+    processing = true
+    try {
+      await runTransaction(ref(db, `${ROOM_ROOT}/rooms/${code}`), current => {
+        if (!current || current.hostUid !== uid) return
+        return applyTurnTimeout(current as RoomState, Date.now() + serverOffset)
+      }, {applyLocally: false})
+    } catch (error) { if (!stopped) reportError(error) }
+    finally { processing = false; if (!stopped) void processInbox() }
+  }, 500)
+  return () => { stopped = true; stop(); stopOffset(); stopClock(); clearInterval(timer) }
 }

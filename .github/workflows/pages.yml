@@ -45,3 +45,22 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  release:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Publish numbered release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if gh release view "v$version" > /dev/null 2>&1; then
+            echo "Release v$version already exists."
+            exit 0
+          fi
+          node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("releases.json","utf8"))[0]; fs.writeFileSync("release-notes.md",r.title+"\n\n"+r.changes.map(x=>"- "+x).join("\n")+"\n");'
+          gh release create "v$version" --target "$GITHUB_SHA" --title "Poker Chips v$version" --notes-file release-notes.md

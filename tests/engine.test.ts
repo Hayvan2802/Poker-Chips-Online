@@ -32,8 +32,11 @@ describe('Poker state machine',()=>{
   side.players.a.handBet=100;side.players.a.stack=0;side.players.b.handBet=70;side.players.b.stack=30;side.players.c.handBet=100;side.players.c.stack=0;side.phase='showdown'
   expect(buildPots(side).map(p=>p.amount)).toEqual([210,60]);payout(side,[['b','c'],['c']]);assertChips(side)
  })
- it('automatically pays the remaining player after folds exactly once',()=>{
+ it('waits for confirmation after folds and pays the remaining player exactly once',()=>{
   const g=deal(createGame(ps,100,5,10,0));act(g,'a',{kind:'fold'});act(g,'b',{kind:'fold'})
+  expect(g.phase).toBe('showdown');expect(g.players.c.stack).toBe(90);expect(g.paid).toBe(false)
+  expect(()=>nextHand(g)).toThrow();expect(()=>payout(g,[['a'],['a']])).toThrow()
+  payout(g,buildPots(g).map(()=>['c']))
   expect(g.phase).toBe('settled');expect(g.players.c.stack).toBe(105);expect(g.paid).toBe(true);assertChips(g)
   expect(()=>payout(g,[['c']])).toThrow()
  })

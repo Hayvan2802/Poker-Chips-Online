@@ -57,7 +57,7 @@ export async function identity(): Promise<User> {
 export async function command<T>(name: string, payload: Record<string, any>): Promise<T> {
   const services = requireFirebase()
   const user = await identity(), actionId = crypto.randomUUID()
-  if (name === 'createRoom') return await createRoom(services.db, user.uid, payload.name, actionId) as T
+  if (name === 'createRoom') return await createRoom(services.db, user.uid, payload.name, actionId, payload.code) as T
   if (name === 'joinRoom') return await submitRequest(services.db, user.uid, payload.code, 'joinRoom', {name: payload.name}, actionId) as T
   if (name === 'roomCommand') {
     const {roomId, ...data} = payload
@@ -69,6 +69,7 @@ export async function command<T>(name: string, payload: Record<string, any>): Pr
 export async function watchRoom<T>(id: string, callbacks: {
   room: (value: T | null) => void
   connection: (connected: boolean) => void
+  serverTimeOffset?: (offset: number) => void
   error: (error: unknown) => void
 }): Promise<() => void> {
   const services = requireFirebase()
@@ -94,6 +95,9 @@ export async function watchRoom<T>(id: string, callbacks: {
     if (value?.hostUid === user.uid && !stopServing) stopServing = serveRoom(services.db, user.uid, id, fail)
     callbacks.room(value as T | null)
   }, fail)
+  const stopOffset = onValue(ref(services.db, '.info/serverTimeOffset'), snapshot => {
+    if (!disposed) callbacks.serverTimeOffset?.(Number(snapshot.val()) || 0)
+  })
   const stopConnection = onValue(ref(services.db, '.info/connected'), async snapshot => {
     if (disposed) return
     const connected = snapshot.val() === true
@@ -110,6 +114,7 @@ export async function watchRoom<T>(id: string, callbacks: {
   return () => {
     disposed = true
     stopRoom()
+    stopOffset()
     stopServing?.()
     stopConnection()
     callbacks.connection(false)

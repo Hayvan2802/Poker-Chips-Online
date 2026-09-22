@@ -2,7 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
-import { connectDatabaseEmulator, getDatabase, get, ref, set } from 'firebase/database'
+import { connectDatabaseEmulator, getDatabase, get, ref, set, onValue } from 'firebase/database'
 import { createRoom, serveRoom, submitRequest } from '../src/roomService'
 import { ROOM_ROOT } from '../src/roomCore'
 
@@ -18,7 +18,7 @@ async function client(authenticate = true) {
   const uid = auth.currentUser?.uid ?? 'unauthenticated'
   const call = async (name: string, data: Record<string, any>): Promise<any> => {
     if (name === 'createRoom') {
-      const result = await createRoom(db, uid, data.name, data.actionId)
+      const result = await createRoom(db, uid, data.name, data.actionId, data.code)
       if (!hosts.has(result.roomId)) hosts.set(result.roomId, serveRoom(db, uid, result.roomId))
       return result
     }
@@ -43,11 +43,12 @@ describe('Firebase Spark multiplayer integration', () => {
     await expect(outsider.call('roomCommand', { roomId, type: 'start', expectedVersion: 1, actionId: randomUUID() })).rejects.toBeDefined()
     await guest.call('joinRoom', { name: 'Guest', code: roomId, actionId: randomUUID() })
     expect(Object.keys((await host.room(roomId)).members)).toHaveLength(2)
+    expect((await guest.room(roomId)).members[guest.uid!].seat).toBe(1)
     await expect(set(ref(guest.db, `${ROOM_ROOT}/rooms/${roomId}/members/${guest.uid}/host`), true)).rejects.toBeDefined()
     await expect(set(ref(guest.db, `${ROOM_ROOT}/requests/${roomId}/${host.uid}/forged-action`), {uid: host.uid, actionId: 'forged-action', kind: 'roomCommand', payload: {type: 'start', expectedVersion: 2}, createdAt: Date.now()})).rejects.toBeDefined()
     await expect(host.command(roomId, 'takeSeat', { seat: 1.5 })).rejects.toBeDefined()
     const version = (await host.room(roomId)).version
-    const seatRace = await Promise.allSettled([host, guest].map(player => player.call('roomCommand', { roomId, type: 'takeSeat', seat: 1, expectedVersion: version, actionId: randomUUID() })))
+    const seatRace = await Promise.allSettled([host, guest].map(player => player.call('roomCommand', { roomId, type: 'takeSeat', seat: 2, expectedVersion: version, actionId: randomUUID() })))
     expect(seatRace.filter(result => result.status === 'fulfilled')).toHaveLength(1)
     await host.command(roomId, 'takeSeat', { seat: 0 })
     await guest.command(roomId, 'takeSeat', { seat: 1 })
@@ -66,6 +67,11 @@ describe('Firebase Spark multiplayer integration', () => {
     await expect(guest.command(roomId, 'act', { move: { kind: 'fold' } })).rejects.toBeDefined()
     await expect(set(ref(guest.db, `${ROOM_ROOT}/rooms/${roomId}/game/players/${guest.uid}/stack`), 999999)).rejects.toBeDefined()
     await host.command(roomId, 'act', { move: { kind: 'fold' } })
+    room = await host.room(roomId)
+    expect(room.game.phase).toBe('showdown'); expect(room.game.paid).toBe(false)
+    await expect(guest.command(roomId,'payout',{winners:[[guest.uid],[guest.uid]]})).rejects.toThrow('Host')
+    await expect(host.command(roomId,'nextHand')).rejects.toThrow('abrechnen')
+    await host.command(roomId,'payout',{winners:[[guest.uid],[guest.uid]]})
     room = await host.room(roomId)
     expect(room.game.phase).toBe('settled'); expect(room.game.players[host.uid!].stack).toBe(95); expect(room.game.players[guest.uid!].stack).toBe(105)
     await expect(host.command(roomId, 'payout', { winners: [[guest.uid]] })).rejects.toBeDefined()
@@ -93,6 +99,72 @@ describe('Firebase Spark multiplayer integration', () => {
     await host.command(roomId, 'nextHand')
     expect((await host.room(roomId)).game.handId).toBe(3)
   }, 120000)
+
+  it('synchronizes timer settings and higher blinds at the hand boundary while rejecting guest changes', async () => {
+    const [host, guest] = await Promise.all([client(), client()])
+    const {roomId} = await host.call('createRoom', {name:'Host', actionId:randomUUID()})
+    await guest.call('joinRoom', {name:'Guest', code:roomId, actionId:randomUUID()})
+    await host.command(roomId,'settings',{stack:1000,sb:5,bb:10,blindMinutes:1,blindMultiplier:2})
+    expect((await guest.room(roomId)).settings.blindMinutes).toBe(1)
+    await expect(set(ref(guest.db, `${ROOM_ROOT}/rooms/${roomId}/settings/blindMinutes`), 0)).rejects.toBeDefined()
+    await expect(set(ref(host.db, `${ROOM_ROOT}/rooms/${roomId}/settings/blindMinutes`), .5)).rejects.toBeDefined()
+    await host.command(roomId,'ready'); await guest.command(roomId,'ready'); await host.command(roomId,'start'); await host.command(roomId,'deal')
+    const clock = (await guest.room(roomId)).blindClock
+    expect(clock.nextIncreaseAt).toBeGreaterThan(Date.now())
+    await expect(set(ref(guest.db, `${ROOM_ROOT}/rooms/${roomId}/blindClock/nextIncreaseAt`), 1)).rejects.toBeDefined()
+    // Expire only this isolated emulator clock; no wall-clock wait is required.
+    await set(ref(host.db, `${ROOM_ROOT}/rooms/${roomId}/blindClock/nextIncreaseAt`), Date.now()-1)
+    await host.command(roomId,'act',{move:{kind:'fold'}})
+    await host.command(roomId,'payout',{winners:[[guest.uid],[guest.uid]]})
+    expect((await guest.room(roomId)).game.bb).toBe(10)
+    await host.command(roomId,'nextHand')
+    let room = await guest.room(roomId)
+    expect(room.game).toMatchObject({sb:10,bb:20,minRaise:20,handId:2})
+    expect(room.blindClock).toEqual({level:2,nextIncreaseAt:0})
+    await guest.command(roomId,'deal')
+    room = await guest.room(roomId)
+    expect(room.game.players[host.uid!].roundBet).toBe(20)
+    expect(room.game.players[guest.uid!].roundBet).toBe(10)
+    expect(room.blindClock.nextIncreaseAt).toBeGreaterThan(Date.now())
+    expect(Object.values(room.game.players).reduce((sum:number,p:any)=>sum+p.stack+p.handBet,0)).toBe(2000)
+  },30000)
+
+  it('recovers an expired turn after the host reconnects and waits for payout confirmation', async () => {
+    const [host,guest]=await Promise.all([client(),client()])
+    const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
+    await guest.call('joinRoom',{name:'Guest',code:roomId,actionId:randomUUID()})
+    await host.command(roomId,'ready');await guest.command(roomId,'ready');await host.command(roomId,'start');await host.command(roomId,'deal')
+    expect((await guest.room(roomId)).turnClock.deadline).toBeGreaterThan(Date.now()+28000)
+    await expect(set(ref(guest.db,`${ROOM_ROOT}/rooms/${roomId}/turnClock/deadline`),1)).rejects.toBeDefined()
+    hosts.get(roomId)!(); hosts.delete(roomId)
+    await set(ref(host.db,`${ROOM_ROOT}/rooms/${roomId}/turnClock/deadline`),Date.now()-1)
+    hosts.set(roomId,serveRoom(host.db,host.uid!,roomId))
+    const room:any=await new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{stop();reject(Error('Host did not expire turn'))},5000)
+      const stop=onValue(ref(guest.db,`${ROOM_ROOT}/rooms/${roomId}`),snapshot=>{
+        if(snapshot.val()?.game?.phase==='showdown'){clearTimeout(timer);stop();resolve(snapshot.val())}
+      },reject)
+    })
+    expect(room.game.players[host.uid!].folded).toBe(true)
+    expect(room.game.paid).toBe(false)
+    expect(room.turnClock).toBeUndefined()
+    expect(room.history[`v${room.version}`].type).toBe('autoFold')
+    await host.call('roomCommand',{roomId,type:'payout',expectedVersion:room.version,actionId:randomUUID(),winners:[[guest.uid],[guest.uid]]})
+    expect((await guest.room(roomId)).game.phase).toBe('settled')
+  },30000)
+
+  it('reserves a custom code atomically and never overwrites an occupied room', async () => {
+    const [first, second] = await Promise.all([client(),client()])
+    const code=String(100000+Math.floor(Math.random()*900000))
+    const payload={name:'Custom table',code,actionId:randomUUID()}
+    const results=await Promise.allSettled([first,second].map(player=>player.call('createRoom',payload)))
+    expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1)
+    const winner=results[0].status==='fulfilled'?first:second, loser=winner===first?second:first
+    expect(await winner.call('createRoom',payload)).toEqual({roomId:code})
+    expect(Object.keys((await winner.room(code)).members)).toEqual([winner.uid])
+    await expect(loser.call('createRoom',{...payload,actionId:randomUUID()})).rejects.toThrow('bereits belegt')
+    await expect(loser.call('createRoom',{...payload,code:'12abcd'})).rejects.toThrow('sechsstellig')
+  },30000)
 
   it('rejects unauthenticated and malformed requests without creating state', async () => {
     const [anonymous, player] = await Promise.all([client(false), client()])

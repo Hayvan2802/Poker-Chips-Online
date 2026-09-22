@@ -71,7 +71,7 @@ export function act(g:Game,uid:string,move:Move){
   }
   p.actedAtBet=g.highestBet
   const live=seated(g).filter(x=>!x.folded)
-  if(live.length===1){g.turn=null;g.phase='showdown';return payout(g,buildPots(g).map(()=>[live[0].uid]))}
+  if(live.length===1){g.turn=null;g.phase='showdown';assertChips(g);return g}
   assignTurn(g,p.seat);assertChips(g);return g
 }
 export function reveal(g:Game){
