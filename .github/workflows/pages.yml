@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: github-pages
@@ -15,12 +15,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
@@ -28,16 +28,20 @@ jobs:
       - run: npm test
       - run: npm run test:multiplayer
       - run: npm run build:pages
-      - name: Publish generated files to gh-pages
-        working-directory: dist
-        run: |
-          git -C .. fetch origin gh-pages:refs/remotes/origin/gh-pages
-          git -C .. worktree add --detach ../pages origin/gh-pages
-          rsync -a --delete --exclude=.git ./ ../../pages/
-          cd ../../pages
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "Publish $GITHUB_SHA"
-          git push origin HEAD:gh-pages
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

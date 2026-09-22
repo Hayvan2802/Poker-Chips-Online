@@ -52,7 +52,7 @@ npm run build:pages
 
 `build:pages` baut für `/Poker-Chips-Online/`, erzwingt deaktivierte Emulatoren und erzeugt `404.html` für direkte Raum- und Einladungslinks. Fehlende Firebase-Werte brechen den Build ab. Eine lokale `.env.local` mit Emulatorwerten vor einem Produktionsbuild entfernen oder umbenennen.
 
-Der Workflow `.github/workflows/pages.yml` prüft Engine und Multiplayer, baut die Website und aktualisiert `gh-pages`, ohne dessen Historie zu überschreiben. GitHub Pages muss `gh-pages` im Stammverzeichnis veröffentlichen. `main` enthält den Quellcode, `gh-pages` nur die gebauten Dateien. Es sind keine GitHub-Secrets für die öffentlichen Firebase-Webkennungen erforderlich.
+Der Workflow `.github/workflows/pages.yml` prüft Engine und Multiplayer, baut die Website und veröffentlicht das geprüfte Build-Artefakt direkt mit `actions/deploy-pages`. Unter **Settings → Pages → Source** muss **GitHub Actions** ausgewählt sein. Jeder Push auf `main` veröffentlicht nach bestandenen Tests die neue Version; der bisherige `gh-pages`-Branch wird nicht mehr benötigt. Es sind keine GitHub-Secrets für die öffentlichen Firebase-Webkennungen erforderlich.
 
 Die Datenbankregeln werden separat mit dem oben genannten Firebase-Befehl veröffentlicht. `firebase.json` enthält bewusst keine Functions-Konfiguration.
 
