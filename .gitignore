@@ -3,5 +3,9 @@ functions/node_modules/
 dist/
 functions/lib/
 .env
+.env.local
+.env.*.local
 .firebase/
 firebase-debug.log
+*-debug.log
+ui-debug.log

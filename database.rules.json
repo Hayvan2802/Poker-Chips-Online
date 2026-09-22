@@ -1,1 +1,71 @@
-{"rules":{"poker":{"v1":{"rooms":{"$roomId":{".read":"auth != null && data.child('members').child(auth.uid).exists()",".write":false,"presence":{"$uid":{"$connection":{".write":"auth != null && auth.uid === $uid && root.child('poker/v1/rooms/'+$roomId+'/members/'+auth.uid).exists()",".validate":"newData.val() === true || !newData.exists()"}}}}}}}}}
+{
+  "rules": {
+    "poker": {
+      "v2": {
+        "rooms": {
+          "$roomId": {
+            ".read": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists())",
+            ".write": "auth != null && newData.exists() && ((!data.exists() && newData.child('hostUid').val() === auth.uid && newData.child('status').val() === 'lobby' && newData.child('version').val() === 1) || data.child('hostUid').val() === auth.uid)",
+            ".validate": "$roomId.matches(/^[0-9]{6}$/) && newData.hasChildren(['code','name','hostUid','creationAction','status','version','createdAt','settings','members']) && newData.child('code').val() === $roomId && newData.child('hostUid').isString() && (!data.exists() || newData.child('hostUid').val() === data.child('hostUid').val()) && newData.child('members').child(newData.child('hostUid').val()).child('host').val() === true",
+            "name": {".validate": "newData.isString() && newData.val().length <= 40"},
+            "status": {".validate": "newData.val() === 'lobby' || newData.val() === 'playing'"},
+            "version": {".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() % 1 === 0"},
+            "settings": {".validate": "newData.hasChildren(['stack','sb','bb']) && newData.child('stack').isNumber() && newData.child('sb').isNumber() && newData.child('bb').isNumber() && newData.child('stack').val() % 1 === 0 && newData.child('sb').val() % 1 === 0 && newData.child('bb').val() % 1 === 0 && newData.child('sb').val() > 0 && newData.child('bb').val() > newData.child('sb').val() && newData.child('bb').val() <= newData.child('stack').val() && newData.child('stack').val() <= 1000000000"},
+            "members": {
+              "$uid": {".validate": "newData.hasChildren(['uid','name','host','ready']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('ready').isBoolean() && newData.child('host').val() === ($uid === newData.parent().parent().child('hostUid').val()) && (!newData.child('seat').exists() || (newData.child('seat').isNumber() && newData.child('seat').val() % 1 === 0 && newData.child('seat').val() >= 0 && newData.child('seat').val() <= 8))"}
+            },
+            "presence": {
+              "$uid": {
+                "$connection": {
+                  ".write": "auth != null && auth.uid === $uid && root.child('poker/v2/rooms').child($roomId).child('members').child(auth.uid).exists()",
+                  ".validate": "newData.val() === true"
+                }
+              }
+            }
+          }
+        },
+        "requests": {
+          "$roomId": {
+            ".read": "auth != null && root.child('poker/v2/rooms').child($roomId).child('hostUid').val() === auth.uid",
+            "$uid": {
+              ".read": "auth != null && auth.uid === $uid",
+              "$actionId": {
+                ".write": "auth != null && ((auth.uid === $uid && ((!data.exists() && newData.exists() && root.child('poker/v2/rooms').child($roomId).exists()) || !newData.exists())) || (!newData.exists() && root.child('poker/v2/rooms').child($roomId).child('hostUid').val() === auth.uid))",
+                ".validate": "$actionId.matches(/^[a-zA-Z0-9_-]{8,100}$/) && newData.hasChildren(['uid','actionId','kind','payload','createdAt']) && newData.child('uid').val() === $uid && newData.child('actionId').val() === $actionId && (newData.child('kind').val() === 'joinRoom' || (newData.child('kind').val() === 'roomCommand' && root.child('poker/v2/rooms').child($roomId).child('members').child($uid).exists())) && newData.child('createdAt').isNumber() && newData.child('createdAt').val() <= now + 1000 && newData.child('createdAt').val() >= now - 25000",
+                "uid": {}, "actionId": {}, "kind": {}, "createdAt": {},
+                "payload": {
+                  "name": {".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 24"},
+                  "type": {".validate": "newData.isString() && newData.val().length <= 20"},
+                  "expectedVersion": {".validate": "newData.isNumber() && newData.val() % 1 === 0"},
+                  "seat": {".validate": "newData.isNumber()"},
+                  "stack": {".validate": "newData.isNumber()"},
+                  "sb": {".validate": "newData.isNumber()"},
+                  "bb": {".validate": "newData.isNumber()"},
+                  "handId": {".validate": "newData.isNumber()"},
+                  "move": {"kind": {".validate": "newData.isString() && newData.val().length <= 10"}, "to": {".validate": "newData.isNumber()"}, "$other": {".validate": false}},
+                  "winners": {"$pot": {"$index": {".validate": "newData.isString() && newData.val().length <= 128"}}},
+                  "$other": {".validate": false}
+                },
+                "$other": {".validate": false}
+              }
+            }
+          }
+        },
+        "responses": {
+          "$roomId": {
+            "$uid": {
+              ".read": "auth != null && (auth.uid === $uid || root.child('poker/v2/rooms').child($roomId).child('hostUid').val() === auth.uid)",
+              "$actionId": {
+                ".write": "auth != null && (root.child('poker/v2/rooms').child($roomId).child('hostUid').val() === auth.uid || (auth.uid === $uid && !newData.exists()))",
+                ".validate": "newData.hasChildren(['ok']) && newData.child('ok').isBoolean()",
+                "ok": {}, "version": {".validate": "newData.isNumber()"},
+                "error": {".validate": "newData.isString() && newData.val().length <= 300"},
+                "$other": {".validate": false}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

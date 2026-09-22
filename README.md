@@ -1,43 +1,67 @@
 # Poker Chips Online
 
-Mobile Begleit-App für einen echten No-Limit-Texas-Hold'em-Abend. Karten bleiben am Tisch; Mitglieder, Sitze, Bereitschaft und Chips werden über Firebase synchronisiert. Das Projekt ist eine eigenständige Vue-3-/TypeScript-Implementierung.
+Mobile Begleit-App für echte Karten und digitale Chips, für 2–9 Personen. Vue 3, TypeScript, Firebase Authentication und Realtime Database. Die Website läuft auf GitHub Pages.
 
-## Lokal starten
+## Kostenlos ohne Zahlungsmittel
 
-Voraussetzungen: Node.js 20+, Java 11+ für die Emulatoren und ein Firebase-Projekt.
+Die App verwendet den **Firebase-Spark-Tarif**. Sie benötigt weder Cloud Functions noch ein Blaze-Upgrade oder ein hinterlegtes Zahlungsmittel. Die kostenlosen Kontingente von Firebase gelten weiterhin.
 
-```bash
-cp .env.example .env
-npm install
-npm run emulators
-# in einem zweiten Terminal
+Der Browser des Hosts leitet den Tisch: Gäste senden Aktionen an eine geschützte Warteschlange; der Host prüft sie mit der gemeinsamen Poker-Engine und schreibt den Spielstand in einer Datenbanktransaktion. **Der Host muss den Tisch geöffnet und sein Gerät wach halten.** Nach dem erneuten Öffnen desselben Tisches im selben Browser wird die Verarbeitung fortgesetzt. Abgelaufene Anfragen werden abgewiesen.
+
+Das ist eine Vertrauensrunde: Der Host ist Spielleiter und bestätigt auch die Gewinner der echten Karten. Die Regeln schützen gegen direkte Spielstand-Änderungen durch Gäste; sie schützen nicht gegen einen absichtlich manipulierten Host-Client. Die anonyme Identität bleibt im Browser gespeichert. Werden dessen Websitedaten gelöscht, geht die Host-Identität verloren.
+
+## Lokale Entwicklung
+
+Voraussetzungen: Node.js 22 und Java 21 für die Firebase-Emulatoren.
+
+```sh
+npm ci
+npm test
+npm run test:multiplayer
+```
+
+Der Integrationstest startet ausschließlich Auth- und Database-Emulatoren mit dem isolierten Projekt `demo-poker-chips`. Er prüft unabhängige Spieler, atomare Sitzwahl, Gastrechte, gefälschte Absender, zwei vollständige Hände, doppelte Anfragen, Chip-Erhaltung und erneutes Starten des Hosts.
+
+Für eine lokale Oberfläche mit Emulatoren `.env.local` anlegen:
+
+```dotenv
+VITE_FIREBASE_API_KEY=fake-api-key
+VITE_FIREBASE_AUTH_DOMAIN=demo-poker-chips.firebaseapp.com
+VITE_FIREBASE_DATABASE_URL=https://demo-poker-chips-default-rtdb.firebaseio.com
+VITE_FIREBASE_PROJECT_ID=demo-poker-chips
+VITE_FIREBASE_APP_ID=demo-app
+VITE_USE_EMULATORS=true
+```
+
+Dann in zwei Terminals:
+
+```sh
+npx firebase emulators:start --project demo-poker-chips --only auth,database
 npm run dev
 ```
 
-Trage für Produktion die fünf `VITE_FIREBASE_*`-Werte der Firebase-Web-App ein. Aktiviere **Authentication → Anonymous**, Realtime Database, Functions und Hosting. Benenne `.firebaserc.example` in `.firebaserc` um und setze ausschließlich die eigene Project-ID. Ein eindeutig zugeordnetes Projekt „gruppenspiele“ war in diesem Arbeitsbereich nicht vorhanden; deshalb wurden keine fremden Ressourcen verändert und kein Deployment vorgenommen.
+## Firebase und Veröffentlichung
 
-## Architektur und Sicherheit
+Projekt: `poker-chips-28`. Realtime Database: `poker-chips-28-default-rtdb` in `europe-west1`. **Authentication → Anonym** muss aktiviert sein. Die konkrete Web-App-Konfiguration steht in `.env.production`. Das sind öffentliche Firebase-Webkennungen, keine Admin-Zugangsdaten; die Zugriffskontrolle übernehmen Authentication und `database.rules.json` ([Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys)).
 
-* `src/engine.ts` enthält die deterministische Zustandsmaschine inklusive Heads-up-Blinds, Zugfolge, All-ins, Side Pots, Split Pots und Chip-Erhaltungsprüfung.
-* Callable Functions reservieren sechsstellige Codes und führen Lobby-Befehle in RTDB-Transaktionen aus. Jeder Befehl trägt `actionId` und `expectedVersion`; UID und Hostrolle kommen ausschließlich aus dem Auth-Kontext.
-* Clients haben nur Lesezugriff auf Räume, in denen ihre UID unter `members` geführt wird. Direkte Schreibzugriffe sind vollständig gesperrt; nur der eigene kurzlebige Presence-Pfad ist beschreibbar. Dauerhafte Spieler- und Chipdaten werden beim Disconnect nicht gelöscht.
-* Der dokumentierte Button wandert im Uhrzeigersinn zum nächsten Sitz mit positivem Stack. Beim Heads-up ist der Dealer Small Blind und handelt preflop zuerst; postflop handelt der andere Spieler zuerst. Restchips eines Split Pots gehen, beginnend links vom Dealer, im Uhrzeigersinn an Gewinner.
-
-> Die vorhandenen Functions decken sichere Raumerstellung, Beitritt, Sitzwahl, Ready, Einstellungen und Sitzungsstart ab. Die State Machine deckt die Pokerbuchhaltung ab; vor einem Echtgeld- oder öffentlichen Produktionseinsatz müssen die verbleibenden Spielbefehle an die Functions angebunden und die Emulator-/Browser-Abnahmetests vollständig durchgeführt werden.
-
-## Tests, Build und Deployment
-
-```bash
-npm test
-npm run build
-npm run test:rules
-npm run deploy
+```sh
+npx firebase login
+npx firebase deploy --only database --project poker-chips-28
+npm run build:pages
 ```
 
-`test:rules` erwartet installierte Emulatoren. Hosting rewritet alle Routen (`/invite/:code`, `/room/:id`) auf die SPA. Das PWA-Update wird als Prompt angeboten statt eine laufende Hand automatisch neu zu laden. Functions benötigen für Produktion üblicherweise den Firebase-Blaze-Tarif. Live-Spielzustand wird nie offline als authoritative State behandelt.
+`build:pages` baut für `/Poker-Chips-Online/`, erzwingt deaktivierte Emulatoren und erzeugt `404.html` für direkte Raum- und Einladungslinks. Fehlende Firebase-Werte brechen den Build ab. Eine lokale `.env.local` mit Emulatorwerten vor einem Produktionsbuild entfernen oder umbenennen.
 
-## GitHub Pages
+Der Workflow `.github/workflows/pages.yml` prüft Engine und Multiplayer, baut die Website und aktualisiert `gh-pages`, ohne dessen Historie zu überschreiben. GitHub Pages muss `gh-pages` im Stammverzeichnis veröffentlichen. `main` enthält den Quellcode, `gh-pages` nur die gebauten Dateien. Es sind keine GitHub-Secrets für die öffentlichen Firebase-Webkennungen erforderlich.
 
-GitHub Pages muss ausschließlich das erzeugte `dist`-Verzeichnis aus dem Branch `gh-pages` veröffentlichen. Dadurch werden nicht versehentlich die TypeScript-Quelldateien aus `main` ausgeliefert. Für den Pages-Build wird `GITHUB_PAGES=true npm run build` verwendet; damit erhält die App automatisch den Repository-Basispfad `/Poker-Chips-Online/`. Eine Kopie von `index.html` als `404.html` ermöglicht direkte Aufrufe der Einladungs- und Raumrouten.
+Die Datenbankregeln werden separat mit dem oben genannten Firebase-Befehl veröffentlicht. `firebase.json` enthält bewusst keine Functions-Konfiguration.
 
-Lege die fünf `VITE_FIREBASE_*`-Werte aus `.env.example` zusätzlich als GitHub Actions Repository Secrets an. Ohne diese Konfiguration wird die Oberfläche zwar ausgeliefert, das Erstellen und Betreten von Räumen kann aber keine Verbindung zu Firebase herstellen.
+## Spiel und Sicherheit
+
+- Räume werden atomar über sechsstellige Codes erstellt. Spieler melden sich anonym an und treten per Code bei.
+- Die Daten liegen unter `poker/v2`. Nur Mitglieder lesen den vollständigen Raum. Nur der ursprüngliche Host schreibt Mitgliedschaft, Einstellungen und Spielstand; Gäste schreiben eigene Anfragen und Presence.
+- Jede verarbeitete Anfrage hat eine `actionId`; Spielbefehle prüfen zusätzlich `expectedVersion`. Wiederholungen werden erkannt, konkurrierende Änderungen abgewiesen.
+- Der Host darf Stack und Blinds in der Lobby ändern. Alle Spieler brauchen einen Sitz und müssen bereit sein.
+- Karten bleiben real. Dealer oder Host bestätigen Austeilen, Flop, Turn und River. Die Engine verarbeitet Check, Call, Bet, Raise, Fold und All-in sowie Side Pots und Split Pots.
+- Ein alleiniger Fold-Gewinner wird automatisch ausgezahlt. Im Showdown bestimmt der Host die Gewinner je Pot. Die nächste Hand verschiebt den Dealer zum nächsten Spieler mit Chips.
+- Direkte Änderungen der Stacks, Übernahme der Hostrolle und gefälschte Anfragen durch Gäste sind durch Firebase Rules gesperrt. Bei Verbindungsverlust oder abwesendem Host pausiert die Oberfläche Aktionen.

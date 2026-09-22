@@ -1,1 +1,0 @@
-{"name":"poker-functions","private":true,"main":"lib/index.js","type":"commonjs","scripts":{"build":"tsc","test":"vitest run"},"engines":{"node":"20"},"dependencies":{"firebase-admin":"latest","firebase-functions":"latest"},"devDependencies":{"typescript":"latest"}}
