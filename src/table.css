@@ -330,3 +330,11 @@
 @media(max-width:700px){.hero{min-height:calc(100vh - 60px)}.settings-page{padding:10px 14px 32px}.settings-intro{padding:25px 6px 22px}.release-card{padding:20px}.modal-actions{flex-direction:column-reverse}.modal-actions button{width:100%}}
 
 .winner-dialog.legacy-open {position:fixed;inset:20px;margin:auto;z-index:50;overflow:auto}
+.table-utility,.entry-policy,.between-hands,.undo-payout{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:12px 0;color:#aac2c8}
+.table-utility button,.entry-policy button,.between-hands button,.undo-payout button,.time-bank-button{width:auto;min-height:44px;padding:10px 14px;border-radius:10px;border:1px solid #3b6470;background:#183a46;color:#d9f6ef;font-weight:700}
+.entry-policy{padding-top:12px;border-top:1px solid #ffffff22}.entry-policy h3{width:100%;margin:0;color:#e9f8f4;font-size:15px}.entry-policy p{width:100%;margin:0}
+.pause-notice{background:#755025;color:#fff5df;border-radius:12px;padding:14px 18px;font-weight:700}
+.pot-loupe,.hand-history{margin:16px 0;padding:18px 22px}.pot-loupe summary,.hand-history summary{cursor:pointer;color:#a6ebdc;font-weight:800;font-size:16px;min-height:32px}
+.pot-loupe ol,.hand-history ol{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:10px}.pot-loupe li,.hand-history li{padding:12px;border-radius:10px;background:#09202d;display:grid;gap:5px}.pot-loupe li span,.hand-history li span,.pot-loupe p{color:#aac1c9;font-size:13px}
+.between-hands{margin:16px 0}.between-hands span{flex:1;min-width:220px}.between-hands .entry-policy{width:100%}.undo-payout p{width:100%;margin:0}
+.time-bank-button{font-size:13px;align-self:center}

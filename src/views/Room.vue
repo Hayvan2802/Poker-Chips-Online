@@ -67,7 +67,7 @@ onUnmounted(() => {
 
 const online = computed(() => browserOnline.value && connected.value)
 const hostOnline = computed(() => !!room.value && (room.value.hostUid === uid.value || present(room.value.hostUid)))
-const locked = computed(() => !online.value || !hostOnline.value || pending.value)
+const locked = computed(() => !online.value || !hostOnline.value || pending.value || !!room.value?.pausedAt)
 const members = computed(() => Object.values(room.value?.members || {}))
 const me = computed(() => room.value?.members[uid.value])
 watch(() => [room.value?.status, room.value?.hostUid, uid.value], () => { void keepHostAwake() })
@@ -81,7 +81,7 @@ const seatedMembers = computed(() => members.value.filter(m => m.seat != null).m
 const readyCount = computed(() => members.value.filter(m => m.ready).length)
 const blindSeats = computed(() => {
   if (!game.value) return {small: undefined, big: undefined}
-  const playing = players.value.filter(p => p.stack + p.handBet > 0 || p.allIn)
+  const playing = players.value.filter(p => !p.sittingOut && (p.stack + p.handBet > 0 || p.allIn))
   const after = (seat: number) => playing.find(p => p.seat > seat) ?? playing[0]
   const small = playing.length === 2 ? dealer.value : after(game.value.dealer)
   return {small: small?.seat, big: small ? after(small.seat)?.seat : undefined}
@@ -89,14 +89,22 @@ const blindSeats = computed(() => {
 const timerEnabled = computed(() => !!room.value && blindMinutes(room.value.settings) > 0)
 const nextBlinds = computed(() => game.value && room.value ? raisedBlinds(game.value.sb, game.value.bb, blindMultiplier(room.value.settings)) : null)
 const timerAtCap = computed(() => !!game.value && nextBlinds.value?.sb === game.value.sb && nextBlinds.value?.bb === game.value.bb)
-const timerDue = computed(() => !!room.value?.blindClock?.nextIncreaseAt && now.value >= room.value.blindClock.nextIncreaseAt)
-const countdown = computed(() => blindCountdown(room.value?.blindClock?.nextIncreaseAt || now.value, now.value))
+const effectiveNow = computed(() => room.value?.pausedAt || now.value)
+const timerDue = computed(() => !!room.value?.blindClock?.nextIncreaseAt && effectiveNow.value >= room.value.blindClock.nextIncreaseAt)
+const countdown = computed(() => blindCountdown(room.value?.blindClock?.nextIncreaseAt || effectiveNow.value, effectiveNow.value))
 const pot = computed(() => game.value?.paid ? 0 : players.value.reduce((sum, p) => sum + p.handBet, 0))
 const myTurn = computed(() => !!player.value && game.value?.turn === uid.value)
-const turnSeconds = computed(() => room.value?.turnClock ? Math.min(30, Math.max(0, Math.ceil((room.value.turnClock.deadline - now.value) / 1000))) : null)
+const turnSeconds = computed(() => room.value?.turnClock ? Math.max(0, Math.ceil((room.value.turnClock.deadline - effectiveNow.value) / 1000)) : null)
 const canAct = computed(() => myTurn.value && turnSeconds.value !== 0)
-const turnTime = computed(() => `00:${String(turnSeconds.value ?? 30).padStart(2, '0')}`)
+const turnTime = computed(() => `${String(Math.floor((turnSeconds.value ?? 30) / 60)).padStart(2, '0')}:${String((turnSeconds.value ?? 30) % 60).padStart(2, '0')}`)
 const lastAction = computed(() => room.value?.history?.[`v${room.value.version}`])
+const recentHistory = computed(() => Object.values(room.value?.history || {}).sort((a, b) => b.version - a.version).slice(0, 24))
+const potDetails = computed(() => game.value && !game.value.paid ? buildPots(game.value) : game.value?.pots || [])
+function eventText(entry: NonNullable<RoomState['history']>[string]) {
+  const name = room.value?.members[entry.uid]?.name || game.value?.players[entry.uid]?.name || 'Spieler'
+  const type = entry.type === 'act' ? ({fold:'passt',check:'checkt',call:'geht mit',bet:'setzt',raise:'erhöht','all-in':'geht all-in'} as Record<string,string>)[entry.move || ''] || 'handelt' : ({joinRoom:'tritt bei',payout:'zahlt den Pot aus',undoPayout:'korrigiert die Auszahlung',autoFold:'passt automatisch',timeBank:'nimmt 30 Sekunden Zeitreserve',sitOut:'ändert seinen Pausenstatus',randomSeats:'lost die Plätze aus',pause:'pausiert den Tisch',resume:'setzt den Tisch fort',deal:'bestätigt die Karten',reveal:'bestätigt weitere Karten',nextHand:'startet die nächste Hand'} as Record<string,string>)[entry.type] || entry.type
+  return `${name} ${type}${entry.amount ? ` · ${entry.amount.toLocaleString('de-DE')} Chips` : ''}`
+}
 const callAmount = computed(() => Math.min(player.value?.stack || 0, Math.max(0, (game.value?.highestBet || 0) - (player.value?.roundBet || 0))))
 const maximumBet = computed(() => (player.value?.roundBet || 0) + (player.value?.stack || 0))
 const minimumBet = computed(() => game.value ? (game.value.highestBet < game.value.bb ? game.value.bb : game.value.highestBet + game.value.minRaise) : 0)
@@ -115,7 +123,9 @@ const waitingReveal = computed(() => ['waiting-flop', 'waiting-turn', 'waiting-r
 const activeName = computed(() => game.value?.turn ? game.value.players[game.value.turn]?.name : '')
 
 async function send(type: string, data: object = {}) {
-  if (locked.value || !room.value) return
+  if (!room.value) return
+  if (type !== 'resume' && locked.value) return
+  if (type === 'resume' && (!online.value || !hostOnline.value || pending.value)) return
   pending.value = true
   error.value = ''
   try {
@@ -154,6 +164,8 @@ const winnerDialog = ref<HTMLDialogElement | null>(null)
 function openWinnerDialog() { const el = winnerDialog.value; if (!el || el.open) return; if (typeof el.showModal === 'function') el.showModal(); else { el.setAttribute('open', ''); el.classList.add('legacy-open') } }
 function closeWinnerDialog() { const el = winnerDialog.value; if (!el) return; if (typeof el.close === 'function') el.close(); else { el.removeAttribute('open'); el.classList.remove('legacy-open') } }
 const onlyOneLeft = computed(() => players.value.filter(p => !p.folded).length === 1)
+const undoConfirm = ref(false)
+watch(() => game.value?.phase, () => { undoConfirm.value = false })
 watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () => {
   await nextTick()
   if (game.value?.phase === 'showdown' && me.value?.host) {
@@ -176,6 +188,8 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
     </div>
     <p v-if="error" class="error" role="alert">{{error}}</p>
     <p v-if="me?.host" class="field-hint">Du leitest diesen Tisch. Lass diese Seite während des Spiels geöffnet und dein Gerät wach.</p>
+    <div v-if="room.status === 'playing' && me?.host" class="table-utility"><button v-if="!room.pausedAt" :disabled="locked" @click="send('pause')">⏸ Tisch pausieren</button><button v-else :disabled="!online || !hostOnline || pending" @click="send('resume')">▶ Tisch fortsetzen</button></div>
+    <p v-if="room.pausedAt" class="pause-notice" role="status">Der Tisch ist pausiert. Zug- und Blind-Timer laufen nach dem Fortsetzen weiter.</p>
     <div v-if="room.status === 'lobby'" class="lobby">
       <div class="panel seating-panel">
         <div class="seating-heading"><div><small>GEMEINSAM AM TISCH</small><h2>Dein Platz ist reserviert.</h2></div><span class="player-count">{{members.length}} / 9</span></div>
@@ -184,6 +198,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
           <span class="felt-eyebrow">POKER CHIPS</span><strong class="lobby-ready-count">{{readyCount}} <span>/ {{members.length}}</span></strong><span class="felt-caption">bereit für die erste Hand</span>
           <span class="felt-footnote">Die Plätze laufen im Uhrzeigersinn.</span>
         </PokerTable>
+        <div v-if="me?.host" class="table-utility"><button :disabled="locked" @click="send('randomSeats')">↻ Plätze auslosen</button><span>Alle Bereit-Meldungen werden danach zurückgesetzt.</span></div>
         <div class="seat-legend"><span><i></i> Dein Platz</span><span><i></i> Bereit</span><span>Platzwechsel setzt „Bereit“ zurück.</span></div>
         <ul class="member-list"><li v-for="member in members" :key="member.uid"><span :class="{present: present(member.uid)}">●</span> {{member.name}}<small v-if="member.host">HOST</small><span v-if="member.seat == null">wählt einen Sitz</span></li></ul>
       </div>
@@ -209,6 +224,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
         </form>
         <button :disabled="locked || me?.seat == null || settingsChanged" :class="{ready: me?.ready}" @click="send('ready')">{{me?.ready ? '✓ Bereit – zurücknehmen' : 'Ich bin bereit'}}</button>
         <button v-if="me?.host" class="primary" :disabled="locked || !canStart || settingsChanged" @click="send('start')">Pokerabend starten</button>
+        <div v-if="me?.host" class="entry-policy"><h3>Neue Spieler</h3><button type="button" :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen === false, lateRegistration: !!room.lateRegistration})">{{room.joinOpen === false ? 'Tisch wieder öffnen' : 'Tisch für neue Spieler sperren'}}</button><button type="button" :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen !== false, lateRegistration: !room.lateRegistration})">Später Einstieg: {{room.lateRegistration ? 'erlaubt' : 'aus'}}</button><p class="field-hint">Ein später Einstieg ist nur zwischen zwei Händen möglich.</p></div>
         <p v-if="settingsChanged && me?.host" class="field-hint settings-unsaved" role="status">Speichere deine Änderungen, bevor ihr bereit seid.</p>
         <p class="field-hint">Zum Start müssen mindestens zwei Spieler sitzen und alle bereit sein.</p>
       </aside>
@@ -230,6 +246,8 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
         <span class="felt-eyebrow">{{phaseName}}</span><div class="center-chips" aria-hidden="true"><i></i><i></i><i></i></div><div :key="pot" class="pot-chip">{{pot.toLocaleString('de-DE')}}</div><strong class="felt-caption">IM POT</strong><p v-if="activeName">{{myTurn ? 'Du bist am Zug' : activeName + ' ist am Zug'}}</p>
         <span v-if="game.turn && turnSeconds !== null" class="turn-clock" :class="{urgent: turnSeconds <= 10}" role="timer" aria-label="Verbleibende Bedenkzeit">{{turnTime}}</span>
       </PokerTable>
+      <details v-if="potDetails.length" class="panel pot-loupe"><summary>Pot-Lupe · {{potDetails.length}} {{potDetails.length === 1 ? 'Pot' : 'Pots'}} ansehen</summary><ol><li v-for="(currentPot, index) in potDetails" :key="index"><strong>{{index === 0 ? 'Hauptpot' : 'Nebenpot ' + index}}: {{currentPot.amount.toLocaleString('de-DE')}} Chips</strong><span>Gewinnen können: {{currentPot.eligible.map(playerUid => game?.players[playerUid]?.name || 'Spieler').join(', ')}}</span></li></ol><p>Gefoldete Einsätze bleiben im Pot, gefoldete Spieler können ihn nicht gewinnen.</p></details>
+      <div v-if="['waiting-deal', 'settled'].includes(game.phase)" class="panel between-hands"><button v-if="player && player.stack > 0" :disabled="locked" @click="send('sitOut', {sittingOut: !player.sittingOut})">{{player.sittingOut ? 'Wieder mitspielen' : 'Nächste Hand aussetzen'}}</button><span v-if="player?.sittingOut">Du setzt aus und bekommst keine Karten oder Blinds. Zurückkehrende Spieler zahlen den Blind erst, wenn sie regulär an der Reihe sind.</span><div v-if="me?.host && game.phase === 'settled'" class="entry-policy"><button :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen === false, lateRegistration: !!room.lateRegistration})">{{room.joinOpen === false ? 'Tisch für neue Spieler öffnen' : 'Tisch für neue Spieler sperren'}}</button><button :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen !== false, lateRegistration: !room.lateRegistration})">Später Einstieg: {{room.lateRegistration ? 'erlaubt' : 'aus'}}</button></div></div>
       <div v-if="game.phase === 'waiting-deal' || waitingReveal" class="panel dealer-panel">
         <h2>{{phaseName}}</h2>
         <p>{{game.phase === 'waiting-deal' ? 'Der Dealer verteilt die echten Karten. Erst nach der Bestätigung werden die Blinds gebucht.' : 'Der Dealer legt die nächsten Gemeinschaftskarten auf den Tisch und bestätigt anschließend.'}}</p>
@@ -258,14 +276,16 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
       </dialog>
       <div v-if="game.phase === 'settled'" class="panel dealer-panel">
         <h2>Hand beendet</h2><p>Die Chips wurden ausgezahlt.</p>
+        <div v-if="me?.host && room.lastPayout?.handId === game.handId" class="undo-payout"><button v-if="!undoConfirm" :disabled="locked" @click="undoConfirm=true">Auszahlung korrigieren</button><template v-else><p>Die Auszahlung dieser Hand zurücknehmen und Gewinner neu wählen?</p><button :disabled="locked" @click="send('undoPayout'); undoConfirm=false">Ja, zurücknehmen</button><button @click="undoConfirm=false">Abbrechen</button></template></div>
         <p v-if="timerEnabled && timerDue && !timerAtCap" class="next-blind-note">Nächste Hand mit {{nextBlinds?.sb}} / {{nextBlinds?.bb}} Blinds · Level {{(room.blindClock?.level || 1) + 1}}</p>
-        <button v-if="me?.host && players.filter(p => p.stack > 0).length >= 2" class="primary control-button" :disabled="locked" @click="send('nextHand')">Nächste Hand vorbereiten</button>
-        <p v-else-if="players.filter(p => p.stack > 0).length < 2">Die Runde ist beendet. {{players.find(p => p.stack > 0)?.name}} hat alle Chips.</p>
+        <button v-if="me?.host && players.filter(p => p.stack > 0 && !p.sittingOut).length >= 2" class="primary control-button" :disabled="locked" @click="send('nextHand')">Nächste Hand vorbereiten</button>
+        <p v-else-if="players.filter(p => p.stack > 0 && !p.sittingOut).length < 2">Es müssen mindestens zwei Spieler mit Chips aktiv sein, bevor die nächste Hand beginnt.</p>
         <p v-else>Warte auf die nächste Hand.</p>
       </div>
       <div v-if="game.turn" class="actionbar">
         <p class="turn-label" aria-live="polite">{{pending ? 'Aktion wird übertragen …' : myTurn ? 'Du bist am Zug' : 'Warte auf ' + activeName}}</p>
         <span v-if="turnSeconds !== null" class="turn-time-hint" :class="{urgent: turnSeconds <= 10}">{{turnSeconds === 0 ? 'Automatisches Passen …' : 'Automatisch passen in ' + turnTime}}</span>
+        <button v-if="myTurn && (me?.timeBank ?? 2) > 0" class="time-bank-button" :disabled="locked || !canAct" @click="send('timeBank')">+30 Sek. Zeitreserve · {{me?.timeBank ?? 2}} übrig</button>
         <div class="bet-controls"><label>{{game.highestBet ? 'Erhöhen auf' : 'Setzen'}}<input v-model.number="bet" type="number" :min="minimumBet" :max="maximumBet" step="1" :disabled="locked || !canAct || !canRaise || maximumBet < minimumBet"></label><button :disabled="locked || !canAct || !canRaise || !validBet" @click="act({kind: game.highestBet ? 'raise' : 'bet', to: bet})">{{game.highestBet ? 'Erhöhen' : 'Setzen'}}</button></div>
         <div class="action-buttons">
           <button :disabled="locked || !canAct" @click="act({kind: 'fold'})">Passen</button>
@@ -274,6 +294,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
           <button :disabled="locked || !canAct || !canAllIn" @click="act({kind: 'all-in'})">All-in {{player?.stack || 0}}</button>
         </div>
       </div>
+      <details class="panel hand-history"><summary>Handverlauf · letzte {{recentHistory.length}} Ereignisse</summary><ol><li v-for="entry in recentHistory" :key="entry.version"><span>{{entry.handId ? 'Hand ' + entry.handId : 'Lobby'}} · {{new Date(entry.at).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})}}</span><strong>{{eventText(entry)}}</strong></li></ol></details>
     </div>
   </section>
 </template>

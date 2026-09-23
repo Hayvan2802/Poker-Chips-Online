@@ -1,17 +1,19 @@
-import { act, assertChips, createGame, deal, nextHand, payout, reveal, type Game } from './engine'
+import { act, addLatePlayer, assertChips, createGame, deal, nextHand, payout, reveal, type Game } from './engine'
 import { blindMinutes, blindMultiplier, raisedBlinds, type BlindClock, type BlindSettings } from './blinds'
 
 export const ROOM_ROOT = 'poker/v2'
 export const TURN_DURATION_MS = 30000
-export interface Member { uid: string; name: string; host: boolean; ready: boolean; seat?: number }
+export interface Member { uid: string; name: string; host: boolean; ready: boolean; seat?: number; timeBank?: number; sittingOut?: boolean }
 export interface RoomState {
   code: string; name: string; hostUid: string; creationAction: string; status: 'lobby'|'playing'
   version: number; createdAt: number; settings: BlindSettings; blindClock?: BlindClock
   turnClock?: {uid: string; deadline: number}
+  pausedAt?: number; joinOpen?: boolean; lateRegistration?: boolean
   members: Record<string, Member>; game?: Game
   presence?: Record<string, Record<string, boolean>>
   processed?: Record<string, {uid: string; fingerprint: string; version: number}>
-  history?: Record<string, {type: string; uid: string; at: number; version: number}>
+  history?: Record<string, {type: string; uid: string; at: number; version: number; handId?: number; amount?: number; move?: string; winners?: string[][]}>
+  lastPayout?: {handId: number; game: Game}
 }
 export interface RoomRequest {
   uid: string; actionId: string; kind: 'joinRoom'|'roomCommand'; createdAt: number
@@ -32,7 +34,8 @@ export function actionKey(value: unknown): string {
 export function newRoom(code: string, uid: string, name: string, actionId: string): RoomState {
   return {code: roomCode(code), name: `${cleanName(name)}s Tisch`, hostUid: uid, creationAction: actionKey(actionId), status: 'lobby', version: 1,
     createdAt: Date.now(), settings: {stack: 10000, sb: 50, bb: 100, blindMinutes: 20, blindMultiplier: 2},
-    members: {[uid]: {uid, name: cleanName(name), host: true, ready: false, seat: 0}}}
+    joinOpen: true, lateRegistration: false,
+    members: {[uid]: {uid, name: cleanName(name), host: true, ready: false, seat: 0, timeBank: 2}}}
 }
 function trimMap(map: Record<string, any>) {
   const keys = Object.keys(map).sort((a, b) => (map[a]?.version ?? 0) - (map[b]?.version ?? 0))
@@ -58,11 +61,13 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
   if (request.kind === 'joinRoom') {
     const name = cleanName(data.name)
     if (!room.members[uid]) {
-      lobby()
+      if (room.joinOpen === false) throw Error('Dieser Tisch ist für neue Spieler geschlossen')
+      if (room.status === 'playing' && (!room.lateRegistration || !room.game || !['waiting-deal', 'settled'].includes(room.game.phase))) throw Error('Später Einstieg ist nur zwischen Händen erlaubt')
       if (Object.keys(room.members).length >= 9) throw Error('Der Tisch ist voll')
       const seat = Array.from({length: 9}, (_, index) => index).find(seat => !Object.values(room.members).some(member => member.seat === seat))!
-      room.members[uid] = {uid, name, host: false, ready: false, seat}
-      resetReady()
+      room.members[uid] = {uid, name, host: false, ready: false, seat, timeBank: 2}
+      if (room.status === 'playing') addLatePlayer(room.game!, {uid, name, seat}, room.settings.stack)
+      else resetReady()
     }
   } else if (request.kind === 'roomCommand') {
     const me = room.members[uid]
@@ -79,6 +84,19 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
       }
       case 'ready':
         lobby(); if (me.seat == null) throw Error('Bitte zuerst einen Sitz wählen'); me.ready = !me.ready; break
+      case 'randomSeats': {
+        lobby(); host()
+        const seated = Object.values(room.members).sort((a, b) => a.uid.localeCompare(b.uid))
+        const seats = Array.from({length: 9}, (_, index) => index)
+        let seed = Array.from(actionId + room.version).reduce((sum, char) => Math.imul(sum ^ char.charCodeAt(0), 16777619) >>> 0, 2166136261)
+        for (let index = seats.length - 1; index > 0; index--) { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; const chosen = seed % (index + 1); [seats[index], seats[chosen]] = [seats[chosen], seats[index]] }
+        seated.forEach((member, index) => { member.seat = seats[index] }); resetReady(); break
+      }
+      case 'entryPolicy': {
+        host()
+        if (typeof data.joinOpen !== 'boolean' || typeof data.lateRegistration !== 'boolean') throw Error('Ungültige Tischfreigabe')
+        room.joinOpen = data.joinOpen; room.lateRegistration = data.lateRegistration; break
+      }
       case 'settings': {
         lobby(); host()
         const {stack, sb, bb} = data
@@ -93,13 +111,38 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
         const members = Object.values(room.members)
         if (members.length < 2 || members.some(member => member.seat == null || !member.ready)) throw Error('Alle Spieler müssen sitzen und bereit sein')
         room.game = createGame(members.map(member => ({uid: member.uid, name: member.name, seat: member.seat!})), room.settings.stack, room.settings.sb, room.settings.bb, Math.min(...members.map(member => member.seat!)))
+        members.forEach(member => { member.timeBank ??= 2 })
         if (blindMinutes(room.settings)) room.blindClock = {level: 1, nextIncreaseAt: 0}
         room.status = 'playing'; break
       }
+      case 'pause':
+        host(); if (room.status !== 'playing' || room.pausedAt) throw Error('Der Tisch ist bereits pausiert'); room.pausedAt = now; break
+      case 'resume': {
+        host(); if (!room.pausedAt) throw Error('Der Tisch ist nicht pausiert')
+        const duration = Math.max(0, now - room.pausedAt)
+        if (room.turnClock) room.turnClock.deadline += duration
+        if (room.blindClock?.nextIncreaseAt) room.blindClock.nextIncreaseAt += duration
+        delete room.pausedAt; break
+      }
       default: {
         if (room.status !== 'playing' || !room.game) throw Error('Das Spiel hat noch nicht begonnen')
+        if (room.pausedAt) throw Error('Der Tisch ist pausiert')
         const game = room.game
-        if (data.type === 'deal' || data.type === 'reveal') {
+        if (data.type === 'sitOut') {
+          if (!['waiting-deal', 'settled'].includes(game.phase) || typeof data.sittingOut !== 'boolean') throw Error('Aussetzen geht nur zwischen Händen')
+          const player = game.players[uid]
+          if (!player || (!data.sittingOut && player.stack <= 0)) throw Error('Du benötigst Chips zum Mitspielen')
+          me.sittingOut = data.sittingOut; player.sittingOut = data.sittingOut; player.folded = data.sittingOut || player.stack === 0
+        } else if (data.type === 'timeBank') {
+          if (game.turn !== uid || !room.turnClock || room.turnClock.uid !== uid || request.createdAt > room.turnClock.deadline || (me.timeBank ?? 2) <= 0) throw Error('Zeitreserve ist nicht verfügbar')
+          me.timeBank = (me.timeBank ?? 2) - 1
+          room.turnClock.deadline += 30000
+        } else if (data.type === 'undoPayout') {
+          host()
+          if (game.phase !== 'settled' || room.lastPayout?.handId !== game.handId) throw Error('Diese Auszahlung kann nicht mehr korrigiert werden')
+          room.game = room.lastPayout.game
+          delete room.lastPayout
+        } else if (data.type === 'deal' || data.type === 'reveal') {
           if (room.hostUid !== uid && game.players[uid]?.seat !== game.dealer) throw Error('Nur der Dealer oder Host darf Karten bestätigen')
           if (data.type === 'deal') {
             // A level may change only before chips for a new hand are posted.
@@ -112,17 +155,26 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
           if (room.turnClock && request.createdAt > room.turnClock.deadline) throw Error('Deine Bedenkzeit ist abgelaufen. Du wirst automatisch passen.')
           act(game, uid, data.move)
         }
-        else if (data.type === 'payout') { host(); payout(game, data.winners) }
-        else if (data.type === 'nextHand') { host(); prepareBlinds(room, now); nextHand(game) }
+        else if (data.type === 'payout') { host(); const before = JSON.parse(JSON.stringify(game)) as Game; payout(game, data.winners); room.lastPayout = {handId: game.handId, game: before} }
+        else if (data.type === 'nextHand') { host(); prepareBlinds(room, now); nextHand(game); delete room.lastPayout }
         else throw Error('Unbekannte Aktion')
-        assertChips(game)
+        assertChips(room.game)
       }
     }
   } else throw Error('Unbekannte Anfrage')
+  if (current.lastPayout && (request.kind === 'joinRoom' || !['undoPayout', 'pause', 'resume'].includes(data.type))) delete room.lastPayout
   updateTurnClock(room, current, now, request.kind === 'roomCommand' && data.type === 'act')
   room.version++
   room.processed ??= {}; room.processed[actionId] = {uid, fingerprint, version: room.version}; trimMap(room.processed)
-  room.history ??= {}; room.history[`v${room.version}`] = {type: request.kind === 'joinRoom' ? 'joinRoom' : data.type, uid, at: now, version: room.version}; trimMap(room.history)
+  room.history ??= {}
+  const event: NonNullable<RoomState['history']>[string] = {type: request.kind === 'joinRoom' ? 'joinRoom' : data.type, uid, at: now, version: room.version}
+  if (current.game) event.handId = current.game.handId
+  if (data.type === 'act' && current.game?.players[uid] && room.game?.players[uid]) {
+    event.move = data.move?.kind
+    event.amount = current.game.players[uid].stack - room.game.players[uid].stack
+  }
+  if (data.type === 'payout') { event.amount = Object.values(current.game?.players || {}).reduce((sum, player) => sum + player.handBet, 0); event.winners = data.winners }
+  room.history[`v${room.version}`] = event; trimMap(room.history)
   return room
 }
 
@@ -135,7 +187,7 @@ function updateTurnClock(room: RoomState, previous: RoomState, now: number, acte
 // Only the host calls this inside a transaction. The stored deadline makes it
 // safe across repeated timer ticks, multiple host tabs and reconnections.
 export function applyTurnTimeout(current: RoomState, now: number): RoomState | undefined {
-  if (!current.game?.turn || !current.turnClock || current.turnClock.uid !== current.game.turn || now < current.turnClock.deadline) return
+  if (current.pausedAt || !current.game?.turn || !current.turnClock || current.turnClock.uid !== current.game.turn || now < current.turnClock.deadline) return
   const room: RoomState = JSON.parse(JSON.stringify(current))
   const uid = current.game.turn
   act(room.game!, uid, {kind: 'fold'})
@@ -143,7 +195,7 @@ export function applyTurnTimeout(current: RoomState, now: number): RoomState | u
   assertChips(room.game!)
   room.version++
   room.history ??= {}
-  room.history[`v${room.version}`] = {type: 'autoFold', uid, at: now, version: room.version}
+  room.history[`v${room.version}`] = {type: 'autoFold', uid, at: now, version: room.version, handId: room.game?.handId}
   trimMap(room.history)
   return room
 }

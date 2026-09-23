@@ -27,7 +27,7 @@
             },
             "members": {
               "$uid": {
-                ".validate": "newData.hasChildren(['uid','name','host','ready']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('ready').isBoolean() && newData.child('host').val() === ($uid === newData.parent().parent().child('hostUid').val()) && (!newData.child('seat').exists() || (newData.child('seat').isNumber() && newData.child('seat').val() % 1 === 0 && newData.child('seat').val() >= 0 && newData.child('seat').val() <= 8))"
+                ".validate": "newData.hasChildren(['uid','name','host','ready']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('ready').isBoolean() && newData.child('host').val() === ($uid === newData.parent().parent().child('hostUid').val()) && (!newData.child('seat').exists() || (newData.child('seat').isNumber() && newData.child('seat').val() % 1 === 0 && newData.child('seat').val() >= 0 && newData.child('seat').val() <= 8)) && (!newData.child('timeBank').exists() || (newData.child('timeBank').isNumber() && newData.child('timeBank').val() >= 0 && newData.child('timeBank').val() <= 2 && newData.child('timeBank').val() % 1 === 0)) && (!newData.child('sittingOut').exists() || newData.child('sittingOut').isBoolean())"
               }
             },
             "presence": {
@@ -79,6 +79,15 @@
                   },
                   "bb": {
                     ".validate": "newData.isNumber()"
+                  },
+                  "joinOpen": {
+                    ".validate": "newData.isBoolean()"
+                  },
+                  "lateRegistration": {
+                    ".validate": "newData.isBoolean()"
+                  },
+                  "sittingOut": {
+                    ".validate": "newData.isBoolean()"
                   },
                   "blindMinutes": {
                     ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 180"
