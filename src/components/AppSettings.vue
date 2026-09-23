@@ -11,6 +11,7 @@ import {releasesSince} from '../updates'
 type Section = 'darstellung' | 'ton' | 'konto' | 'daten' | ''
 const route = useRoute(), router = useRouter()
 const settingsOpen = ref(false), historyOpen = ref(false), whatsNewOpen = ref(false)
+const canShowUpdate = computed(() => !whatsNewOpen.value && !settingsOpen.value && !historyOpen.value && !route.path.startsWith('/room/') && route.path !== '/local')
 const expanded = ref<Section>('')
 const seenAtOpen = ref<string | null>(null)
 const current = releases[0]
@@ -76,8 +77,8 @@ watch(() => route.path, () => { if (routerReady) maybeShowWhatsNew() })
     <div v-if="whatsNewOpen" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="whats-new-title">
       <div class="release-card"><div class="modal-kicker">NEU IN POKER CHIPS</div><h2 id="whats-new-title">Was ist neu in v{{current.version}}?</h2><div class="release-scroll"><article v-for="release in entriesSince" :key="release.version" class="release-entry"><div><strong>v{{release.version}}</strong><time :datetime="release.date">{{dateLabel(release.date)}}</time></div><h3>{{release.title}}</h3><ul><li v-for="change in release.changes" :key="change">{{change}}</li></ul></article></div><button class="modal-primary" @click="closeWhatsNew">Alles klar</button></div>
     </div>
-    <div v-if="updateState.available" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="update-title" @click.self="dismissUpdate">
-      <div class="release-card update-card"><div class="modal-kicker">UPDATE VERFÜGBAR</div><h2 id="update-title">v{{updateState.remoteVersion}} ist da</h2><p>Die neue Version wird erst installiert, wenn du es möchtest. Deine Räume, dein Name und deine Spieleridentität bleiben gespeichert.</p><div class="modal-actions"><button class="modal-secondary" :disabled="updateState.installing" @click="dismissUpdate">Später</button><button class="modal-primary" :disabled="updateState.installing" @click="installUpdate">{{updateState.installing ? 'Lädt …' : 'Aktualisieren & neu starten'}}</button></div></div>
+    <div v-if="updateState.available && canShowUpdate" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="update-title" @click.self="dismissUpdate">
+      <div class="release-card update-card"><div class="modal-kicker">UPDATE VERFÜGBAR</div><h2 id="update-title">v{{updateState.remoteVersion}} ist da</h2><p>Die neue Version wird erst installiert, wenn du es möchtest. Deine Räume, dein Name und deine Spieleridentität bleiben gespeichert.</p><p v-if="updateState.message" class="error" role="alert">{{updateState.message}}</p><div class="modal-actions"><button class="modal-secondary" :disabled="updateState.installing" @click="dismissUpdate">Später</button><button class="modal-primary" :disabled="updateState.installing" @click="installUpdate">{{updateState.installing ? 'Lädt …' : 'Aktualisieren & neu starten'}}</button></div></div>
     </div>
   </Teleport>
 </template>

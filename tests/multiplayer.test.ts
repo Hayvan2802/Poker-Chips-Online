@@ -217,6 +217,9 @@ describe('Firebase Spark multiplayer integration', () => {
     expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1)
     const winner=results[0].status==='fulfilled'?first:second, loser=winner===first?second:first
     expect(await winner.call('createRoom',payload)).toEqual({roomId:code})
+    const previous = await winner.room(code)
+    expect(await winner.call('createRoom',{...payload,name:'Changed title',actionId:randomUUID()})).toEqual({roomId:code})
+    expect(await winner.room(code)).toEqual(previous)
     expect(Object.keys((await winner.room(code)).members)).toEqual([winner.uid])
     await expect(loser.call('createRoom',{...payload,actionId:randomUUID()})).rejects.toThrow('bereits belegt')
     await expect(loser.call('createRoom',{...payload,code:'12abcd'})).rejects.toThrow('sechsstellig')

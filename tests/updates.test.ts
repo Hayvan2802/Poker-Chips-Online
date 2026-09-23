@@ -10,7 +10,7 @@ describe('Update safeguards',()=>{
   })
   it('shows only the latest note on first install and all unseen versions after an upgrade',()=>{
     expect(releasesSince(releases,null).map(x=>x.version)).toEqual([releases[0].version])
-    expect(releasesSince(releases,'0.0.5').map(x=>x.version)).toEqual(['0.0.9','0.0.8','0.0.7','0.0.6'])
+    expect(releasesSince(releases,'0.0.5').map(x=>x.version)).toEqual(['0.0.10','0.0.9','0.0.8','0.0.7','0.0.6'])
     expect(releasesSince(releases,releases[0].version)).toEqual([])
   })
 })
