@@ -33,6 +33,21 @@ async function client(authenticate = true) {
 afterAll(async () => { for (const stop of hosts.values()) stop(); await Promise.all(apps.map(deleteApp)) })
 
 describe('Firebase Spark multiplayer integration', () => {
+  it('stores planned levels, chip colors and rebuys through the free database rules', async () => {
+    const [host,guest]=await Promise.all([client(),client()])
+    const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
+    await guest.call('joinRoom',{name:'Guest',code:roomId,actionId:randomUUID()})
+    await host.command(roomId,'settings',{stack:10000,sb:50,bb:100,blindMinutes:1,blindMultiplier:2,ante:10,anteMode:'bb',buyInCents:1000,
+      blindPlan:[{kind:'level',sb:50,bb:100,minutes:1,ante:10,anteMode:'bb'},{kind:'break',minutes:5},{kind:'level',sb:100,bb:200,minutes:1,ante:20,anteMode:'bb'}],
+      denominations:[{color:'#ffffff',value:25},{color:'#2563eb',value:100}]})
+    await host.command(roomId,'ready');await guest.command(roomId,'ready');await host.command(roomId,'start')
+    await host.command(roomId,'rebuy',{targetUid:guest.uid,chips:5000})
+    const room=await guest.room(roomId)
+    expect(room.game.totalChips).toBe(25000)
+    expect(room.buyIns[guest.uid!]).toBe(1500)
+    expect(room.settings.blindPlan).toHaveLength(3)
+    await expect(guest.command(roomId,'rebuy',{targetUid:guest.uid,chips:5000})).rejects.toThrow('Host')
+  },30000)
   it('keeps pause, time reserve, payout correction and late entry authoritative across clients', async () => {
     const [host, guest, third] = await Promise.all([client(), client(), client()])
     const {roomId} = await host.call('createRoom', {name:'Host', actionId:randomUUID()})

@@ -1,5 +1,5 @@
-import { act, addLatePlayer, assertChips, createGame, deal, nextHand, payout, reveal, type Game } from './engine'
-import { blindMinutes, blindMultiplier, raisedBlinds, type BlindClock, type BlindSettings } from './blinds'
+import { act, addChips, addLatePlayer, assertChips, createGame, deal, nextHand, payout, reveal, type Game } from './engine'
+import { blindMinutes, blindMultiplier, raisedBlinds, validBlindPlan, validDenominations, type BlindClock, type BlindSettings, type BlindStep } from './blinds'
 
 export const ROOM_ROOT = 'poker/v2'
 export const TURN_DURATION_MS = 30000
@@ -14,6 +14,7 @@ export interface RoomState {
   processed?: Record<string, {uid: string; fingerprint: string; version: number}>
   history?: Record<string, {type: string; uid: string; at: number; version: number; handId?: number; amount?: number; move?: string; winners?: string[][]}>
   lastPayout?: {handId: number; game: Game}
+  buyIns?: Record<string, number>; boughtChips?: Record<string, number>
 }
 export interface RoomRequest {
   uid: string; actionId: string; kind: 'joinRoom'|'roomCommand'; createdAt: number
@@ -66,7 +67,11 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
       if (Object.keys(room.members).length >= 9) throw Error('Der Tisch ist voll')
       const seat = Array.from({length: 9}, (_, index) => index).find(seat => !Object.values(room.members).some(member => member.seat === seat))!
       room.members[uid] = {uid, name, host: false, ready: false, seat, timeBank: 2}
-      if (room.status === 'playing') addLatePlayer(room.game!, {uid, name, seat}, room.settings.stack)
+      if (room.status === 'playing') {
+        addLatePlayer(room.game!, {uid, name, seat}, room.settings.stack)
+        room.boughtChips ??= {}; room.boughtChips[uid] = room.settings.stack
+        if (room.settings.buyInCents) {room.buyIns ??= {}; room.buyIns[uid] = room.settings.buyInCents}
+      }
       else resetReady()
     }
   } else if (request.kind === 'roomCommand') {
@@ -104,13 +109,24 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
         const minutes = data.blindMinutes ?? blindMinutes(room.settings)
         const multiplier = data.blindMultiplier ?? blindMultiplier(room.settings)
         if (!Number.isInteger(minutes) || minutes < 0 || minutes > 180 || ![1.5, 2].includes(multiplier)) throw Error('Blind-Timer: 1 bis 180 Minuten oder aus; Erhöhung um 50 % oder 100 %')
-        room.settings = {stack, sb, bb, blindMinutes: minutes, blindMultiplier: multiplier}; resetReady(); break
+        const ante = data.ante ?? 0, anteMode = data.anteMode ?? 'each', buyInCents = data.buyInCents ?? 0
+        if (!Number.isSafeInteger(ante) || ante < 0 || ante > bb || !['each','bb'].includes(anteMode) || !Number.isSafeInteger(buyInCents) || buyInCents < 0 || buyInCents > 1000000000) throw Error('Ungültiges Ante oder Buy-in')
+        const blindPlan = data.blindPlan ?? []
+        if (!Array.isArray(blindPlan) || (blindPlan.length > 0 && !validBlindPlan(blindPlan, {sb,bb}))) throw Error('Ungültiger Blindplan')
+        const denominations = data.denominations ?? []
+        if (!Array.isArray(denominations) || (denominations.length > 0 && !validDenominations(denominations))) throw Error('Ungültige Chip-Stückelungen')
+        room.settings = {stack, sb, bb, blindMinutes: minutes, blindMultiplier: multiplier, ante, anteMode, buyInCents, ...(blindPlan.length ? {blindPlan} : {}), ...(denominations.length ? {denominations} : {})}; resetReady(); break
       }
       case 'start': {
         lobby(); host()
         const members = Object.values(room.members)
         if (members.length < 2 || members.some(member => member.seat == null || !member.ready)) throw Error('Alle Spieler müssen sitzen und bereit sein')
-        room.game = createGame(members.map(member => ({uid: member.uid, name: member.name, seat: member.seat!})), room.settings.stack, room.settings.sb, room.settings.bb, Math.min(...members.map(member => member.seat!)))
+        const first = room.settings.blindPlan?.[0]
+        const ante = first?.kind === 'level' ? first.ante ?? 0 : room.settings.ante ?? 0
+        const anteMode = first?.kind === 'level' ? first.anteMode ?? 'each' : room.settings.anteMode ?? 'each'
+        room.game = createGame(members.map(member => ({uid: member.uid, name: member.name, seat: member.seat!})), room.settings.stack, room.settings.sb, room.settings.bb, Math.min(...members.map(member => member.seat!)), ante, anteMode)
+        room.boughtChips = Object.fromEntries(members.map(member => [member.uid, room.settings.stack]))
+        if (room.settings.buyInCents) room.buyIns = Object.fromEntries(members.map(member => [member.uid, room.settings.buyInCents!]))
         members.forEach(member => { member.timeBank ??= 2 })
         if (blindMinutes(room.settings)) room.blindClock = {level: 1, nextIncreaseAt: 0}
         room.status = 'playing'; break
@@ -122,13 +138,22 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
         const duration = Math.max(0, now - room.pausedAt)
         if (room.turnClock) room.turnClock.deadline += duration
         if (room.blindClock?.nextIncreaseAt) room.blindClock.nextIncreaseAt += duration
+        if (room.blindClock?.breakUntil) room.blindClock.breakUntil += duration
         delete room.pausedAt; break
       }
       default: {
         if (room.status !== 'playing' || !room.game) throw Error('Das Spiel hat noch nicht begonnen')
         if (room.pausedAt) throw Error('Der Tisch ist pausiert')
         const game = room.game
-        if (data.type === 'sitOut') {
+        if (data.type === 'rebuy') {
+          host()
+          if (!['waiting-deal','settled'].includes(game.phase) || !room.members[data.targetUid] || !Number.isSafeInteger(data.chips) || data.chips <= 0 || data.chips > 1000000000) throw Error('Rebuy oder Add-on nur zwischen Händen möglich')
+          const price = room.settings.buyInCents ? data.chips * room.settings.buyInCents / room.settings.stack : 0
+          if (!Number.isSafeInteger(price) || price < 0 || price > 1000000000) throw Error('Chipmenge passt nicht zum Buy-in')
+          addChips(game, data.targetUid, data.chips)
+          room.boughtChips ??= {}; room.boughtChips[data.targetUid] = (room.boughtChips[data.targetUid] || 0) + data.chips
+          if (price) {room.buyIns ??= {}; room.buyIns[data.targetUid] = (room.buyIns[data.targetUid] || 0) + price}
+        } else if (data.type === 'sitOut') {
           if (!['waiting-deal', 'settled'].includes(game.phase) || typeof data.sittingOut !== 'boolean') throw Error('Aussetzen geht nur zwischen Händen')
           const player = game.players[uid]
           if (!player || (!data.sittingOut && player.stack <= 0)) throw Error('Du benötigst Chips zum Mitspielen')
@@ -148,7 +173,10 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
             // A level may change only before chips for a new hand are posted.
             if (game.phase !== 'waiting-deal') throw Error('Die Karten wurden bereits bestätigt')
             prepareBlinds(room, now)
-            if (room.blindClock && !room.blindClock.nextIncreaseAt) room.blindClock.nextIncreaseAt = now + blindMinutes(room.settings) * 60000
+            if (room.blindClock && !room.blindClock.nextIncreaseAt && !room.blindClock.breakUntil) {
+              const step = room.settings.blindPlan?.[room.blindClock.level - 1]
+              if (!room.settings.blindPlan || room.blindClock.level < room.settings.blindPlan.length) room.blindClock.nextIncreaseAt = now + (step?.minutes ?? blindMinutes(room.settings)) * 60000
+            }
             deal(game)
           } else reveal(game)
         } else if (data.type === 'act') {
@@ -174,6 +202,7 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
     event.amount = current.game.players[uid].stack - room.game.players[uid].stack
   }
   if (data.type === 'payout') { event.amount = Object.values(current.game?.players || {}).reduce((sum, player) => sum + player.handBet, 0); event.winners = data.winners }
+  if (data.type === 'rebuy') event.amount = data.chips
   room.history[`v${room.version}`] = event; trimMap(room.history)
   return room
 }
@@ -202,8 +231,31 @@ export function applyTurnTimeout(current: RoomState, now: number): RoomState | u
 
 function prepareBlinds(room: RoomState, now: number) {
   const clock = room.blindClock, game = room.game
-  if (!clock || !game || !blindMinutes(room.settings) || !clock.nextIncreaseAt || now < clock.nextIncreaseAt) return
-  if (game.phase !== 'settled' && game.phase !== 'waiting-deal') return
+  if (!clock || !game || (game.phase !== 'settled' && game.phase !== 'waiting-deal')) return
+  const plan = room.settings.blindPlan
+  if (plan?.length) {
+    const applyLevel = (step: BlindStep) => {
+      if (step.kind !== 'level') throw Error('Ungültiger Blindplan')
+      Object.assign(game, {sb:step.sb, bb:step.bb, minRaise:step.bb, ante:step.ante ?? 0, anteMode:step.anteMode ?? 'each'})
+      clock.level++; clock.nextIncreaseAt = 0; delete clock.breakUntil
+    }
+    if (clock.breakUntil) {
+      if (now < clock.breakUntil) throw Error('Die Pause läuft noch')
+      const afterBreak = plan[clock.level]
+      if (afterBreak) applyLevel(afterBreak)
+      else {delete clock.breakUntil; clock.nextIncreaseAt = 0}
+      return
+    }
+    if (!clock.nextIncreaseAt || now < clock.nextIncreaseAt || clock.level >= plan.length) return
+    const next = plan[clock.level]
+    // A pending deal remains playable when a scheduled break becomes due.
+    // The break then begins after that hand is paid, with no mid-hand interruption.
+    if (game.phase === 'waiting-deal' && next.kind === 'break') return
+    if (next.kind === 'break') {clock.level++; clock.breakUntil = now + next.minutes * 60000; clock.nextIncreaseAt = 0}
+    else applyLevel(next)
+    return
+  }
+  if (!blindMinutes(room.settings) || !clock.nextIncreaseAt || now < clock.nextIncreaseAt) return
   const next = raisedBlinds(game.sb, game.bb, blindMultiplier(room.settings))
   if (next.sb !== game.sb || next.bb !== game.bb) clock.level++
   Object.assign(game, next, {minRaise: next.bb})

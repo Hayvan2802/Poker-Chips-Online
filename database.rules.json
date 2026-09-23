@@ -23,6 +23,25 @@
               },
               "blindMultiplier": {
                 ".validate": "newData.val() === 1.5 || newData.val() === 2"
+              },
+              "ante": {
+                ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= newData.parent().child('bb').val()"
+              },
+              "anteMode": {
+                ".validate": "newData.val() === 'each' || newData.val() === 'bb'"
+              },
+              "buyInCents": {
+                ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 1000000000"
+              },
+              "blindPlan": {
+                "$step": {
+                  ".validate": "newData.hasChildren(['kind','minutes']) && (newData.child('kind').val() === 'level' || newData.child('kind').val() === 'break') && newData.child('minutes').isNumber() && newData.child('minutes').val() >= 1 && newData.child('minutes').val() <= 180"
+                }
+              },
+              "denominations": {
+                "$chip": {
+                  ".validate": "newData.hasChildren(['color','value']) && newData.child('color').isString() && newData.child('value').isNumber() && newData.child('value').val() > 0"
+                }
               }
             },
             "members": {
@@ -39,7 +58,7 @@
               }
             },
             "blindClock": {
-              ".validate": "newData.hasChildren(['level', 'nextIncreaseAt']) && newData.child('level').isNumber() && newData.child('level').val() >= 1 && newData.child('level').val() % 1 === 0 && newData.child('nextIncreaseAt').isNumber() && newData.child('nextIncreaseAt').val() >= 0"
+              ".validate": "newData.hasChildren(['level', 'nextIncreaseAt']) && newData.child('level').isNumber() && newData.child('level').val() >= 1 && newData.child('level').val() % 1 === 0 && newData.child('nextIncreaseAt').isNumber() && newData.child('nextIncreaseAt').val() >= 0 && (!newData.child('breakUntil').exists() || (newData.child('breakUntil').isNumber() && newData.child('breakUntil').val() > 0))"
             },
             "turnClock": {
               ".validate": "newData.hasChildren(['uid','deadline']) && newData.child('uid').isString() && newData.child('uid').val() === newData.parent().child('game/turn').val() && newData.child('deadline').isNumber() && newData.child('deadline').val() > 0"
@@ -79,6 +98,31 @@
                   },
                   "bb": {
                     ".validate": "newData.isNumber()"
+                  },
+                  "ante": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "anteMode": {
+                    ".validate": "newData.val() === 'each' || newData.val() === 'bb'"
+                  },
+                  "buyInCents": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "targetUid": {
+                    ".validate": "newData.isString() && newData.val().length <= 128"
+                  },
+                  "chips": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "blindPlan": {
+                    "$step": {
+                      ".validate": "newData.hasChildren(['kind','minutes']) && (newData.child('kind').val() === 'level' || newData.child('kind').val() === 'break')"
+                    }
+                  },
+                  "denominations": {
+                    "$chip": {
+                      ".validate": "newData.hasChildren(['color','value'])"
+                    }
                   },
                   "joinOpen": {
                     ".validate": "newData.isBoolean()"
