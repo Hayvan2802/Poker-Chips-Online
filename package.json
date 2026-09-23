@@ -1,12 +1,12 @@
 {
   "name": "poker-chips-online",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "test": "vitest run tests/engine.test.ts tests/roomCore.test.ts tests/phase1.test.ts tests/phase2.test.ts tests/phase3.test.ts tests/updates.test.ts tests/browser.test.ts",
+    "test": "vitest run tests/engine.test.ts tests/roomCore.test.ts tests/phase1.test.ts tests/phase2.test.ts tests/phase3.test.ts tests/updates.test.ts tests/updateManager.test.ts tests/browser.test.ts",
     "test:rules": "npm run test:multiplayer",
     "emulators": "firebase emulators:start",
     "deploy": "npm run build && firebase deploy",

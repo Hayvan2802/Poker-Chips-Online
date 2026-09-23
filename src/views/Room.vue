@@ -10,6 +10,7 @@ import {cashSettlement} from '../settlement'
 import {readPresets, writePresets, type TablePreset} from '../presets'
 import QRCode from 'qrcode'
 import {playCue} from '../sound'
+import {rememberRoom} from '../recentRoom'
 
 const id = String(useRoute().params.id)
 const roomLink = `${location.origin}${import.meta.env.BASE_URL}invite/${id}`
@@ -47,6 +48,7 @@ onMounted(async () => {
     const stop = await watchRoom<RoomState>(id, {
       room: value => {
         room.value = value
+        if (value?.members[auth?.currentUser?.uid || '']) rememberRoom(id)
         now.value = Date.now() + serverOffset.value
         uid.value = auth?.currentUser?.uid || ''
         if (!value) error.value = 'Dieser Tisch existiert nicht mehr.'
@@ -216,6 +218,8 @@ function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',
     <router-link v-if="error" to="/">Zur Startseite</router-link>
   </div>
   <section v-else class="room">
+    <router-link class="room-back" to="/">← Zum Hauptmenü</router-link>
+    <p v-if="me?.host && room.status === 'playing'" class="room-return-note">Der Tisch bleibt gespeichert. Während du weg bist, wartet die Runde auf dein Gerät.</p>
     <div v-if="!online" class="connection" role="status">Verbindung wird wiederhergestellt – Aktionen sind pausiert</div>
     <div v-else-if="!hostOnline" class="connection" role="status">Der Host ist offline. Sobald er den Tisch wieder öffnet, geht es weiter.</div>
     <div class="room-head">

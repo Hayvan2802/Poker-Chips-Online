@@ -20,7 +20,9 @@ export async function createRoom(db: Database, uid: string, name: string, action
     const code = requestedCode || await generatedCode(uid, actionId, attempt)
     try {
       const tx = await runTransaction(ref(db, `${ROOM_ROOT}/rooms/${code}`), current => {
-        if (current) return current.hostUid === uid && current.creationAction === actionId ? current : undefined
+        // A custom code already owned by this anonymous UID resumes its table.
+        // Never reset a room simply because the host left and returned.
+        if (current) return current.hostUid === uid && (current.creationAction === actionId || !!requestedCode) ? current : undefined
         return newRoom(code, uid, name, actionId)
       }, {applyLocally: false})
       if (tx.committed) return {roomId: code}

@@ -10,9 +10,9 @@ test('start page, reload, version and mobile settings work from the Pages build'
   const response = await page.goto('./')
   expect(response?.status()).toBe(200)
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
-  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.0.9?'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.0.10?'})).toBeVisible()
   await closeWhatsNew(page)
-  await expect(page.getByRole('button', {name: 'Nach einer neuen Version suchen'})).toContainText('v0.0.9')
+  await expect(page.getByRole('button', {name: 'Nach einer neuen Version suchen'})).toContainText('v0.0.10')
   if (testInfo.project.name === 'iphone-webkit') await page.screenshot({path: testInfo.outputPath('home-iphone.png'), fullPage: true})
   await page.getByRole('button', {name: 'Einstellungen öffnen'}).click()
   await expect(page.getByRole('heading', {name: 'Einstellungen'})).toBeVisible()
@@ -28,7 +28,7 @@ test('start page, reload, version and mobile settings work from the Pages build'
   await page.getByRole('button', {name: /Zurück/}).click()
   await page.reload()
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
-  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.0.9?'})).toHaveCount(0)
+  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.0.10?'})).toHaveCount(0)
   await expect(page.locator('#boot-error')).toHaveCount(0)
 })
 
@@ -41,36 +41,70 @@ test('saved names and skipped release notes survive reloads', async ({page}) => 
   await page.evaluate(() => localStorage.setItem('poker-chips-seen-version', '0.0.5'))
   await page.reload()
   const notes = page.getByRole('dialog', {name: /Was ist neu/})
-  await expect(notes).toContainText('v0.0.9')
+  await expect(notes).toContainText('v0.0.10')
   await expect(notes).toContainText('v0.0.8')
   await expect(notes).toContainText('v0.0.7')
   await expect(notes).toContainText('v0.0.6')
   await expect(notes).not.toContainText('v0.0.5')
 })
 
-test('manual version check works without AbortSignal.timeout and no background poll', async ({page}) => {
+test('automatic and manual version checks work without AbortSignal.timeout', async ({page}) => {
   let checks = 0
   await page.route('**/version.json?*', async route => { checks++; await route.continue() })
   await page.addInitScript(() => { try { Object.defineProperty(AbortSignal, 'timeout', {value: undefined}) } catch {} })
   await page.goto('./')
   await closeWhatsNew(page)
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
-  expect(checks).toBe(0)
+  await expect.poll(() => checks).toBeGreaterThan(0)
+  const automaticChecks = checks
   await page.getByRole('button', {name: 'Nach einer neuen Version suchen'}).click()
-  await expect(page.getByRole('status')).toContainText('Du bist auf dem neuesten Stand (v0.0.9).')
-  expect(checks).toBe(1)
+  await expect(page.getByRole('status')).toContainText('Du bist auf dem neuesten Stand (v0.0.10).')
+  expect(checks).toBeGreaterThan(automaticChecks)
 })
 
-test('new version is offered only after a tap and can be postponed without reload', async ({page}) => {
-  await page.route('**/version.json?*', route => route.fulfill({json: {version: '0.0.10'}}))
+test('the recent table shortcut survives reload and can be removed locally', async ({page}, testInfo) => {
+  await page.goto('./')
+  await closeWhatsNew(page)
+  await page.evaluate(() => localStorage.setItem('poker-chips-last-room', '123456'))
+  await page.reload()
+  await expect(page.getByRole('link',{name:/Tisch fortsetzen/})).toHaveAttribute('href', '/Poker-Chips-Online/room/123456')
+  if (testInfo.project.name === 'iphone-webkit') await page.screenshot({path:testInfo.outputPath('recent-table-iphone.png'),fullPage:true})
+  await page.getByRole('button',{name:'Tisch-Verknüpfung entfernen'}).click()
+  await expect(page.getByRole('link',{name:/Tisch fortsetzen/})).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('link',{name:/Tisch fortsetzen/})).toHaveCount(0)
+})
+
+test('a new version appears automatically and dismissal does not repeat every 15 seconds', async ({page}) => {
+  await page.clock.install()
+  let checks = 0
+  await page.route('**/version.json?*', route => { checks++; return route.fulfill({json: {version: '0.0.11'}}) })
   await page.goto('./')
   await closeWhatsNew(page)
   const original = page.url()
-  await page.getByRole('button', {name: 'Nach einer neuen Version suchen'}).click()
-  await expect(page.getByRole('dialog', {name: /v0.0.10 ist da/})).toBeVisible()
+  await expect(page.getByRole('dialog', {name: /v0.0.11 ist da/})).toBeVisible()
   await page.getByRole('button', {name: 'Später'}).click()
-  await expect(page.getByRole('dialog', {name: /v0.0.10 ist da/})).toHaveCount(0)
+  await expect(page.getByRole('dialog', {name: /v0.0.11 ist da/})).toHaveCount(0)
+  await page.clock.fastForward(15_000)
+  await expect.poll(() => checks).toBeGreaterThan(1)
+  await expect(page.getByRole('dialog', {name: /v0.0.11 ist da/})).toHaveCount(0)
   expect(page.url()).toBe(original)
+  await page.getByRole('button', {name: 'Nach einer neuen Version suchen'}).click()
+  await expect(page.getByRole('dialog', {name: /v0.0.11 ist da/})).toBeVisible()
+})
+
+test('a background update notice waits until the local game returns to the menu', async ({page}) => {
+  await page.clock.install()
+  let latest = '0.0.10'
+  await page.route('**/version.json?*', route => route.fulfill({json: {version: latest}}))
+  await page.goto('./')
+  await closeWhatsNew(page)
+  await page.getByRole('link',{name:/Ohne Internet auf einem Gerät spielen/}).click()
+  latest = '0.0.11'
+  await page.clock.fastForward(15_000)
+  await expect(page.getByRole('dialog',{name:/v0.0.11 ist da/})).toHaveCount(0)
+  await page.getByRole('link',{name:/Zur Startseite/}).click()
+  await expect(page.getByRole('dialog',{name:/v0.0.11 ist da/})).toBeVisible()
 })
 
 test('manifest, worker and offline shell stay inside the GitHub Pages scope', async ({page, context}, testInfo) => {
@@ -87,7 +121,7 @@ test('manifest, worker and offline shell stay inside the GitHub Pages scope', as
   await page.reload()
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true)
   const cachedShell = await page.evaluate(async () => {
-    const cache = await caches.open((await caches.keys()).find(name => name.includes('poker-chips-v0.0.9-precache')) || '')
+    const cache = await caches.open((await caches.keys()).find(name => name.includes('poker-chips-v0.0.10-precache')) || '')
     const page = await cache.match(new URL('index.html', location.href), {ignoreSearch: true})
     return page?.text()
   })
