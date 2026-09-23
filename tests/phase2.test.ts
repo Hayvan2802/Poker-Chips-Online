@@ -59,4 +59,14 @@ describe('Turnierstufen, Antes und Cash-Abrechnung',()=>{
     expect(()=>command(r,'host','rebuy',{targetUid:'guest',chips:5000})).toThrow('zwischen Händen')
     assertChips(r.game!)
   })
+  it('keeps cent allocation exact even when chip times buy-in exceeds safe integer precision',()=>{
+    const r=table()
+    r.status='playing'
+    r.game={handId:1,dealer:0,sb:1,bb:2,phase:'settled',turn:null,highestBet:0,minRaise:2,paid:true,pots:[],totalChips:8_000_000_000,
+      players:{host:{uid:'host',name:'Host',seat:0,stack:4_000_000_001,folded:false,allIn:false,roundBet:0,handBet:0,actedAtBet:-1},guest:{uid:'guest',name:'Guest',seat:1,stack:3_999_999_999,folded:false,allIn:false,roundBet:0,handBet:0,actedAtBet:-1}}}
+    r.buyIns={host:1_000_000_000,guest:1_000_000_001}
+    const result=cashSettlement(r)!
+    expect(result.rows.reduce((sum,row)=>sum+row.valueCents,0)).toBe(2_000_000_001)
+    expect(result.rows.reduce((sum,row)=>sum+row.netCents,0)).toBe(0)
+  })
 })

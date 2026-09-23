@@ -13,9 +13,9 @@ export function cashSettlement(room: RoomState): {rows:CashResult[];transfers:Ca
   const totalChips = players.reduce((sum,p)=>sum+p.stack,0)
   if (!Number.isSafeInteger(totalPaid) || !totalChips || !Number.isSafeInteger(totalChips)) return null
   const allocated = players.map(p=>({uid:p.uid, name:p.name, chips:p.stack, paidCents:buyIns[p.uid]||0,
-    valueCents:Math.floor(p.stack*totalPaid/totalChips), remainder:p.stack*totalPaid%totalChips}))
+    valueCents:Number(BigInt(p.stack)*BigInt(totalPaid)/BigInt(totalChips)), remainder:BigInt(p.stack)*BigInt(totalPaid)%BigInt(totalChips)}))
   let left = totalPaid-allocated.reduce((sum,p)=>sum+p.valueCents,0)
-  for (const p of [...allocated].sort((a,b)=>b.remainder-a.remainder||a.uid.localeCompare(b.uid))) if (left-- > 0) p.valueCents++
+  for (const p of [...allocated].sort((a,b)=>a.remainder===b.remainder?a.uid.localeCompare(b.uid):a.remainder>b.remainder?-1:1)) if (left-- > 0) p.valueCents++
   const rows = allocated.map(({remainder: _remainder,...p})=>({...p,netCents:p.valueCents-p.paidCents}))
   const debts = rows.filter(p=>p.netCents<0).map(p=>({uid:p.uid,left:-p.netCents}))
   const credits = rows.filter(p=>p.netCents>0).map(p=>({uid:p.uid,left:p.netCents}))

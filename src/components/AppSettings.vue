@@ -4,11 +4,11 @@ import {useRoute, useRouter} from 'vue-router'
 import releases from '../../releases.json'
 import {safeRead, safeWrite} from '../browser'
 import {playerName, savePlayerName} from '../profile'
-import {highContrast, reducedMotion} from '../preferences'
+import {highContrast, reducedMotion, soundEnabled} from '../preferences'
 import {updateState, initUpdates, dismissUpdate, installUpdate} from '../updateManager'
 import {releasesSince} from '../updates'
 
-type Section = 'darstellung' | 'konto' | 'daten' | ''
+type Section = 'darstellung' | 'ton' | 'konto' | 'daten' | ''
 const route = useRoute(), router = useRouter()
 const settingsOpen = ref(false), historyOpen = ref(false), whatsNewOpen = ref(false)
 const expanded = ref<Section>('')
@@ -48,6 +48,10 @@ watch(() => route.path, () => { if (routerReady) maybeShowWhatsNew() })
               <label class="setting-toggle"><span><strong>Weniger Bewegung</strong><small>Animationen am Tisch reduzieren</small></span><input v-model="reducedMotion" type="checkbox" role="switch"></label>
               <label class="setting-toggle"><span><strong>Mehr Kontrast</strong><small>Schrift und Umrandungen kräftiger anzeigen</small></span><input v-model="highContrast" type="checkbox" role="switch"></label>
             </div>
+          </section>
+          <section class="settings-category">
+            <button class="category-head" :aria-expanded="expanded==='ton'" @click="toggle('ton')"><span class="category-icon">♫</span><span><strong>Ton</strong><small>Leise Signale für Spielereignisse</small></span><span class="category-chevron" :class="{open:expanded==='ton'}">⌄</span></button>
+            <div v-if="expanded==='ton'" class="category-body"><label class="setting-toggle"><span><strong>Spielsignale</strong><small>Ein sanfter Ton, wenn du am Zug bist oder eine Hand endet</small></span><input v-model="soundEnabled" type="checkbox" role="switch"></label></div>
           </section>
           <section class="settings-category">
             <button class="category-head" :aria-expanded="expanded==='konto'" @click="toggle('konto')"><span class="category-icon">♙</span><span><strong>Konto & Name</strong><small>Dein Anzeigename auf diesem Gerät</small></span><span class="category-chevron" :class="{open:expanded==='konto'}">⌄</span></button>

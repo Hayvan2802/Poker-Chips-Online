@@ -8,8 +8,11 @@ import { blindCountdown, blindMinutes, blindMultiplier, raisedBlinds, validBlind
 import type { RoomState } from '../roomCore'
 import {cashSettlement} from '../settlement'
 import {readPresets, writePresets, type TablePreset} from '../presets'
+import QRCode from 'qrcode'
+import {playCue} from '../sound'
 
 const id = String(useRoute().params.id)
+const roomLink = `${location.origin}${import.meta.env.BASE_URL}invite/${id}`
 const room = ref<RoomState | null>(null), uid = ref(''), error = ref(''), copied = ref(false)
 const now = ref(Date.now()), serverOffset = ref(0)
 const browserOnline = ref(navigator.onLine), connected = ref(false), pending = ref(false)
@@ -76,6 +79,10 @@ watch(() => [room.value?.status, room.value?.hostUid, uid.value], () => { void k
 const game = computed(() => room.value?.game)
 const players = computed(() => Object.values(game.value?.players || {}).sort((a, b) => a.seat - b.seat))
 const player = computed(() => game.value?.players[uid.value])
+watch(() => [game.value?.turn, game.value?.phase], ([turn,phase],[oldTurn,oldPhase]) => {
+  if (turn && turn===uid.value && oldTurn!==turn) playCue('turn')
+  else if (phase==='settled' && oldPhase==='showdown') playCue('win')
+})
 const dealer = computed(() => players.value.find(p => p.seat === game.value?.dealer))
 const canDeal = computed(() => me.value?.host || dealer.value?.uid === uid.value)
 const canStart = computed(() => members.value.length >= 2 && members.value.every(m => m.seat != null && m.ready))
@@ -108,7 +115,7 @@ const recentHistory = computed(() => Object.values(room.value?.history || {}).so
 const potDetails = computed(() => game.value && !game.value.paid ? buildPots(game.value) : game.value?.pots || [])
 function eventText(entry: NonNullable<RoomState['history']>[string]) {
   const name = room.value?.members[entry.uid]?.name || game.value?.players[entry.uid]?.name || 'Spieler'
-  const type = entry.type === 'act' ? ({fold:'passt',check:'checkt',call:'geht mit',bet:'setzt',raise:'erhöht','all-in':'geht all-in'} as Record<string,string>)[entry.move || ''] || 'handelt' : ({joinRoom:'tritt bei',payout:'zahlt den Pot aus',undoPayout:'korrigiert die Auszahlung',autoFold:'passt automatisch',timeBank:'nimmt 30 Sekunden Zeitreserve',sitOut:'ändert seinen Pausenstatus',randomSeats:'lost die Plätze aus',pause:'pausiert den Tisch',resume:'setzt den Tisch fort',deal:'bestätigt die Karten',reveal:'bestätigt weitere Karten',nextHand:'startet die nächste Hand'} as Record<string,string>)[entry.type] || entry.type
+  const type = entry.type === 'act' ? ({fold:'passt',check:'checkt',call:'geht mit',bet:'setzt',raise:'erhöht','all-in':'geht all-in'} as Record<string,string>)[entry.move || ''] || 'handelt' : ({joinRoom:'tritt bei',payout:'zahlt den Pot aus',undoPayout:'korrigiert die Auszahlung',autoFold:'passt automatisch',timeBank:'nimmt 30 Sekunden Zeitreserve',sitOut:'ändert seinen Pausenstatus',randomSeats:'lost die Plätze aus',pause:'pausiert den Tisch',resume:'setzt den Tisch fort',deal:'bestätigt die Karten',reveal:'bestätigt weitere Karten',nextHand:'startet die nächste Hand',hostTransfer:'übergibt die Spielleitung',rebuy:'bucht neue Chips'} as Record<string,string>)[entry.type] || entry.type
   return `${name} ${type}${entry.amount ? ` · ${entry.amount.toLocaleString('de-DE')} Chips` : ''}`
 }
 const callAmount = computed(() => Math.min(player.value?.stack || 0, Math.max(0, (game.value?.highestBet || 0) - (player.value?.roundBet || 0))))
@@ -145,15 +152,21 @@ function act(move: Move) {
 function present(memberUid: string) { return Object.keys(room.value?.presence?.[memberUid] || {}).length > 0 }
 async function copy() {
   try {
-    await navigator.clipboard.writeText(`${location.origin}${import.meta.env.BASE_URL}invite/${room.value?.code}`)
+    await navigator.clipboard.writeText(roomLink)
     copied.value = true
     if (copyTimer) clearTimeout(copyTimer)
     copyTimer = setTimeout(() => { copied.value = false }, 2500)
   } catch { error.value = 'Link konnte nicht kopiert werden. Teile stattdessen den Raumcode.' }
 }
+const showQr=ref(false),qrImage=ref(''),hostTarget=ref('')
+watch(showQr,async open=>{if(!open)return;try{qrImage.value=await QRCode.toDataURL(roomLink,{width:320,margin:2,color:{dark:'#103b35',light:'#ffffff'}})}catch{qrImage.value='';error.value='QR-Code konnte nicht erstellt werden.'}})
+async function shareRoom(){
+  try {if(navigator.share) await navigator.share({title:'Poker Chips Tisch',text:`Tisch ${id}`,url:roomLink});else await copy()}
+  catch(cause){if((cause as Error)?.name!=='AbortError')error.value='Teilen ist nicht verfügbar. Kopiere stattdessen den Raumcode.'}
+}
 
 const settings = reactive<BlindSettings>({ stack: 10000, sb: 50, bb: 100, blindMinutes: 20, blindMultiplier: 2, ante:0, anteMode:'each', buyInCents:0, blindPlan:[], denominations:[] })
-const timerOn = computed({get: () => (settings.blindMinutes ?? 0) > 0, set: value => { settings.blindMinutes = value ? 20 : 0 }})
+const timerOn = computed({get: () => (settings.blindMinutes ?? 0) > 0, set: value => { settings.blindMinutes = value ? 20 : 0; if(!value)settings.blindPlan=[] }})
 watch(() => JSON.stringify(room.value?.settings), () => {
   if (room.value) Object.assign(settings, {ante:0,anteMode:'each',buyInCents:0,blindPlan:[],denominations:[]}, room.value.settings, {blindMinutes: blindMinutes(room.value.settings), blindMultiplier: blindMultiplier(room.value.settings)})
 }, { immediate: true })
@@ -191,6 +204,10 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
     openWinnerDialog()
   } else closeWinnerDialog()
 }, {flush: 'post'})
+const sessionRows=computed(()=>Object.values(game.value?.players||{}).map(p=>({uid:p.uid,name:p.name,hands:room.value?.session?.winners[p.uid]?.hands||0,chips:room.value?.session?.winners[p.uid]?.chips||0})).sort((a,b)=>b.chips-a.chips))
+const recap=computed(()=>{const session=room.value?.session;return [`Poker Chips · Tisch ${id}`,`${session?.handsCompleted||0} Hände gespielt`, `Größter Pot: ${(session?.biggestPot||0).toLocaleString('de-DE')} Chips`,...sessionRows.value.map(p=>`${p.name}: ${p.hands} gewonnene Hände, ${p.chips.toLocaleString('de-DE')} Chips aus Pots`)].join('\n')})
+async function shareRecap(){try{if(navigator.share)await navigator.share({title:'Poker Chips Rückblick',text:recap.value});else await navigator.clipboard.writeText(recap.value)}catch(cause){if((cause as Error)?.name!=='AbortError')error.value='Rückblick konnte nicht geteilt werden.'}}
+function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',rows=sessionRows.value.map(p=>`"${p.name.replace(/"/g,'""')}",${p.hands},${p.chips}`).join('\n');const url=URL.createObjectURL(new Blob(['\ufeff',header,rows],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`poker-chips-${id}-rueckblick.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 </script>
 
 <template>
@@ -205,8 +222,11 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
       <div><small>PRIVATER TISCH</small><h1>{{room.name || 'Freundschaftsrunde'}}</h1><span class="connection-state">{{online ? '● Live verbunden' : '○ Verbindung unterbrochen'}}</span></div>
       <button class="code" @click="copy"><small>RAUMCODE</small><b>{{room.code}}</b><span>{{copied ? '✓ Link kopiert' : 'Link kopieren'}}</span></button>
     </div>
+    <div class="share-actions"><button @click="showQr=true">▦ QR-Code</button><button @click="shareRoom">↗ Tisch teilen</button><router-link :to="`/room/${id}/display`" target="_blank">▣ TV-Ansicht</router-link></div>
+    <div v-if="showQr" class="modal-overlay" role="dialog" aria-modal="true" aria-label="QR-Code für diesen Tisch" @click.self="showQr=false"><div class="release-card qr-card"><button class="modal-close" aria-label="Schließen" @click="showQr=false">×</button><div class="modal-kicker">EINLADEN</div><h2>Scanne den Tischcode</h2><img v-if="qrImage" :src="qrImage" :alt="`QR-Code für Tisch ${id}`"><strong>{{id}}</strong><p>Mit dem Smartphone scannen und mit demselben Namen beitreten.</p><button class="modal-primary" @click="shareRoom">Einladung teilen</button></div></div>
     <p v-if="error" class="error" role="alert">{{error}}</p>
     <p v-if="me?.host" class="field-hint">Du leitest diesen Tisch. Lass diese Seite während des Spiels geöffnet und dein Gerät wach.</p>
+    <div v-if="me?.host && (room.status==='lobby' || ['waiting-deal','settled'].includes(game?.phase||''))" class="host-transfer"><select v-model="hostTarget" aria-label="Neuen Host wählen"><option value="">Neuen Host wählen</option><option v-for="member in members.filter(member=>member.uid!==uid && present(member.uid))" :key="member.uid" :value="member.uid">{{member.name}}</option></select><button :disabled="locked || !hostTarget" @click="send('hostTransfer',{targetUid:hostTarget})">Spielleitung übergeben</button><span>Der neue Host muss online sein und den Tisch geöffnet lassen.</span></div>
     <div v-if="room.status === 'playing' && me?.host" class="table-utility"><button v-if="!room.pausedAt" :disabled="locked" @click="send('pause')">⏸ Tisch pausieren</button><button v-else :disabled="!online || !hostOnline || pending" @click="send('resume')">▶ Tisch fortsetzen</button></div>
     <p v-if="room.pausedAt" class="pause-notice" role="status">Der Tisch ist pausiert. Zug- und Blind-Timer laufen nach dem Fortsetzen weiter.</p>
     <div v-if="room.status === 'lobby'" class="lobby">
@@ -231,11 +251,12 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
           </div>
           <div class="timer-settings">
             <label class="timer-toggle"><input v-model="timerOn" type="checkbox" :disabled="!me?.host || locked"><span>Blinds automatisch erhöhen<small>Neue Blinds ab der nächsten Hand</small></span></label>
-            <div v-if="timerOn" class="twocol">
+            <div v-if="timerOn && !planEnabled" class="twocol">
               <label>Leveldauer (Minuten)<input v-model.number="settings.blindMinutes" type="number" min="1" max="180" step="1" :disabled="!me?.host || locked"></label>
               <label>Erhöhung<select v-model.number="settings.blindMultiplier" :disabled="!me?.host || locked"><option :value="1.5">+50 %</option><option :value="2">Verdoppeln</option></select></label>
             </div>
-            <p v-if="timerOn && settingsValid" class="field-hint">Alle {{settings.blindMinutes}} {{settings.blindMinutes === 1 ? 'Minute' : 'Minuten'}}: {{settings.sb}} / {{settings.bb}} → {{settingsPreview.sb}} / {{settingsPreview.bb}}. Der Timer startet mit der ersten Hand. Eine laufende Hand wird fertig gespielt, dann beginnt das nächste Level mit voller Zeit.</p>
+            <p v-if="planEnabled" class="field-hint">Der Blindplan unten legt Stufen und Pausen fest. Die aktuelle Hand wird immer fertig gespielt.</p>
+            <p v-else-if="timerOn && settingsValid" class="field-hint">Alle {{settings.blindMinutes}} {{settings.blindMinutes === 1 ? 'Minute' : 'Minuten'}}: {{settings.sb}} / {{settings.bb}} → {{settingsPreview.sb}} / {{settingsPreview.bb}}. Der Timer startet mit der ersten Hand. Eine laufende Hand wird fertig gespielt, dann beginnt das nächste Level mit voller Zeit.</p>
             <p v-else-if="!timerOn" class="field-hint">Die Blinds bleiben den ganzen Abend gleich.</p>
           </div>
           <details class="advanced-settings"><summary>Turnier, Antes & Chips</summary>
@@ -327,6 +348,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
         </div>
       </div>
       <details class="panel hand-history"><summary>Handverlauf · letzte {{recentHistory.length}} Ereignisse</summary><ol><li v-for="entry in recentHistory" :key="entry.version"><span>{{entry.handId ? 'Hand ' + entry.handId : 'Lobby'}} · {{new Date(entry.at).toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'})}}</span><strong>{{eventText(entry)}}</strong></li></ol></details>
+      <details class="panel session-recap"><summary>Abend-Rückblick & Highlights</summary><div class="recap-stats"><div><span>HÄNDE</span><strong>{{room.session?.handsCompleted||0}}</strong></div><div><span>GRÖSSTER POT</span><strong>{{(room.session?.biggestPot||0).toLocaleString('de-DE')}}</strong></div></div><ol><li v-for="row in sessionRows" :key="row.uid"><strong>{{row.name}}</strong><span>{{row.hands}} Hände gewonnen · {{row.chips.toLocaleString('de-DE')}} Chips aus Pots</span></li></ol><div class="share-actions"><button @click="shareRecap">↗ Rückblick teilen</button><button @click="exportRecap">CSV exportieren</button></div><p>Der Rückblick zählt Auszahlungen seit Einführung der Statistik an diesem Tisch. Chips aus Pots sind Bruttogewinne, kein Nettoprofit.</p></details>
     </div>
   </section>
 </template>

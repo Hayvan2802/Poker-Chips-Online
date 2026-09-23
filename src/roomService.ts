@@ -69,6 +69,21 @@ export async function submitRequest(db: Database, uid: string, code: string, kin
   })
 }
 
+// The previous host must finish this transaction before the next host starts
+// serving the inbox. Sending it through that inbox can strand its response.
+export async function transferHost(db:Database, uid:string, code:string, payload:Record<string,any>, actionId:string) {
+  roomCode(code);actionKey(actionId);await waitForConnection(db)
+  const request:RoomRequest={uid,actionId,kind:'roomCommand',createdAt:Date.now(),payload}
+  let reason='Hostwechsel fehlgeschlagen'
+  const result=await runTransaction(ref(db,`${ROOM_ROOT}/rooms/${code}`), current=>{
+    if(!current)return
+    try{return applyRequest(current as RoomState,request,Date.now())}
+    catch(error){reason=error instanceof Error?error.message:reason;return}
+  },{applyLocally:false})
+  if(!result.committed)throw Error(reason)
+  return {roomId:code,version:result.snapshot.val().version}
+}
+
 export function serveRoom(db: Database, uid: string, code: string, reportError: (error: unknown) => void = () => {}) {
   let stopped = false, processing = false
   let serverOffset = 0

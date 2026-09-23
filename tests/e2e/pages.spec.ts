@@ -114,3 +114,35 @@ test('storage denied on Safari still renders the home screen', async ({page}) =>
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
   await expect(page.locator('#boot-error')).toHaveCount(0)
 })
+
+test('one-device table works offline and survives reload', async ({page,context},testInfo) => {
+  await page.goto('./')
+  await closeWhatsNew(page)
+  await page.getByRole('link',{name:/Ohne Internet auf einem Gerät spielen/}).click()
+  await expect(page.getByRole('heading',{name:'Ein Gerät, ein Tisch.'})).toBeVisible()
+  await page.getByRole('button',{name:'Lokalen Tisch starten'}).click()
+  await expect(page.getByText('Hand 1',{exact:false})).toBeVisible()
+  if(testInfo.project.name==='iphone-webkit')await page.screenshot({path:testInfo.outputPath('local-table-iphone.png'),fullPage:true})
+  await page.getByRole('button',{name:'Hand starten & Blinds buchen'}).click()
+  await page.getByRole('button',{name:'Passen'}).click()
+  await page.getByRole('button',{name:'Gewinn auszahlen'}).click()
+  await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
+  await page.reload()
+  await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
+  await page.evaluate(()=>navigator.serviceWorker.ready)
+  await page.reload()
+  await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true)
+  if (context.browser()?.browserType().name()==='chromium') {
+    await context.setOffline(true)
+    await page.reload()
+    await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
+  }
+})
+
+test('display deep link renders a controlled status instead of a blank page', async ({page}) => {
+  await page.route(/(firebaseio|firebasedatabase|googleapis)\.com/,route=>route.abort())
+  const response=await page.goto('room/000000/display')
+  expect(response?.status()).toBe(404)
+  await expect(page.getByRole('heading',{name:'Live am Tisch'})).toBeVisible()
+  await expect(page.locator('#boot-error')).toHaveCount(0)
+})

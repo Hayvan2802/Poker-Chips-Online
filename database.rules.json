@@ -6,7 +6,7 @@
           "$roomId": {
             ".read": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists())",
             ".write": "auth != null && newData.exists() && ((!data.exists() && newData.child('hostUid').val() === auth.uid && newData.child('status').val() === 'lobby' && newData.child('version').val() === 1) || data.child('hostUid').val() === auth.uid)",
-            ".validate": "$roomId.matches(/^[0-9]{6}$/) && newData.hasChildren(['code','name','hostUid','creationAction','status','version','createdAt','settings','members']) && newData.child('code').val() === $roomId && newData.child('hostUid').isString() && (!data.exists() || newData.child('hostUid').val() === data.child('hostUid').val()) && newData.child('members').child(newData.child('hostUid').val()).child('host').val() === true",
+            ".validate": "$roomId.matches(/^[0-9]{6}$/) && newData.hasChildren(['code','name','hostUid','creationAction','status','version','createdAt','settings','members']) && newData.child('code').val() === $roomId && newData.child('hostUid').isString() && (!data.exists() || newData.child('hostUid').val() === data.child('hostUid').val() || (auth.uid === data.child('hostUid').val() && data.child('members').child(newData.child('hostUid').val()).exists() && (data.child('status').val() === 'lobby' || data.child('game/phase').val() === 'settled' || data.child('game/phase').val() === 'waiting-deal'))) && newData.child('members').child(newData.child('hostUid').val()).child('host').val() === true",
             "name": {
               ".validate": "newData.isString() && newData.val().length <= 40"
             },

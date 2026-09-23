@@ -13,8 +13,9 @@ export interface RoomState {
   presence?: Record<string, Record<string, boolean>>
   processed?: Record<string, {uid: string; fingerprint: string; version: number}>
   history?: Record<string, {type: string; uid: string; at: number; version: number; handId?: number; amount?: number; move?: string; winners?: string[][]}>
-  lastPayout?: {handId: number; game: Game}
+  lastPayout?: {handId: number; game: Game; session?: RoomState['session']}
   buyIns?: Record<string, number>; boughtChips?: Record<string, number>
+  session?: {handsCompleted:number; biggestPot:number; winners:Record<string,{hands:number;chips:number}>}
 }
 export interface RoomRequest {
   uid: string; actionId: string; kind: 'joinRoom'|'roomCommand'; createdAt: number
@@ -102,6 +103,12 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
         if (typeof data.joinOpen !== 'boolean' || typeof data.lateRegistration !== 'boolean') throw Error('Ungültige Tischfreigabe')
         room.joinOpen = data.joinOpen; room.lateRegistration = data.lateRegistration; break
       }
+      case 'hostTransfer': {
+        host()
+        if (room.status === 'playing' && !['waiting-deal','settled'].includes(room.game?.phase || '')) throw Error('Hostwechsel ist nur zwischen Händen möglich')
+        if (typeof data.targetUid !== 'string' || !room.members[data.targetUid] || data.targetUid === uid) throw Error('Wähle ein anderes Tischmitglied')
+        me.host = false; room.members[data.targetUid].host = true; room.hostUid = data.targetUid; break
+      }
       case 'settings': {
         lobby(); host()
         const {stack, sb, bb} = data
@@ -150,6 +157,7 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
           if (!['waiting-deal','settled'].includes(game.phase) || !room.members[data.targetUid] || !Number.isSafeInteger(data.chips) || data.chips <= 0 || data.chips > 1000000000) throw Error('Rebuy oder Add-on nur zwischen Händen möglich')
           const price = room.settings.buyInCents ? data.chips * room.settings.buyInCents / room.settings.stack : 0
           if (!Number.isSafeInteger(price) || price < 0 || price > 1000000000) throw Error('Chipmenge passt nicht zum Buy-in')
+          if (!Number.isSafeInteger((room.boughtChips?.[data.targetUid] || 0) + data.chips) || !Number.isSafeInteger((room.buyIns?.[data.targetUid] || 0) + price)) throw Error('Rebuy-Grenze erreicht')
           addChips(game, data.targetUid, data.chips)
           room.boughtChips ??= {}; room.boughtChips[data.targetUid] = (room.boughtChips[data.targetUid] || 0) + data.chips
           if (price) {room.buyIns ??= {}; room.buyIns[data.targetUid] = (room.buyIns[data.targetUid] || 0) + price}
@@ -166,6 +174,8 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
           host()
           if (game.phase !== 'settled' || room.lastPayout?.handId !== game.handId) throw Error('Diese Auszahlung kann nicht mehr korrigiert werden')
           room.game = room.lastPayout.game
+          if (room.lastPayout.session) room.session = room.lastPayout.session
+          else delete room.session
           delete room.lastPayout
         } else if (data.type === 'deal' || data.type === 'reveal') {
           if (room.hostUid !== uid && game.players[uid]?.seat !== game.dealer) throw Error('Nur der Dealer oder Host darf Karten bestätigen')
@@ -183,7 +193,21 @@ export function applyRequest(current: RoomState, request: RoomRequest, now = Dat
           if (room.turnClock && request.createdAt > room.turnClock.deadline) throw Error('Deine Bedenkzeit ist abgelaufen. Du wirst automatisch passen.')
           act(game, uid, data.move)
         }
-        else if (data.type === 'payout') { host(); const before = JSON.parse(JSON.stringify(game)) as Game; payout(game, data.winners); room.lastPayout = {handId: game.handId, game: before} }
+        else if (data.type === 'payout') {
+          host()
+          const before = JSON.parse(JSON.stringify(game)) as Game
+          const beforeSession = room.session ? JSON.parse(JSON.stringify(room.session)) as NonNullable<RoomState['session']> : undefined
+          const potAmount = Object.values(game.players).reduce((sum, player) => sum + player.handBet, 0)
+          payout(game, data.winners)
+          room.lastPayout = {handId: game.handId, game: before, ...(beforeSession ? {session:beforeSession} : {})}
+          room.session ??= {handsCompleted:0,biggestPot:0,winners:{}}
+          room.session.handsCompleted++
+          room.session.biggestPot = Math.max(room.session.biggestPot,potAmount)
+          for (const player of Object.values(game.players)) {
+            const won = player.stack-before.players[player.uid].stack
+            if (won>0) {room.session.winners[player.uid] ??= {hands:0,chips:0};room.session.winners[player.uid].hands++;room.session.winners[player.uid].chips+=won}
+          }
+        }
         else if (data.type === 'nextHand') { host(); prepareBlinds(room, now); nextHand(game); delete room.lastPayout }
         else throw Error('Unbekannte Aktion')
         assertChips(room.game)

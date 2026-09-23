@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, get, ref, set, onValue } from 'firebase/database'
-import { createRoom, serveRoom, submitRequest } from '../src/roomService'
+import { createRoom, serveRoom, submitRequest, transferHost } from '../src/roomService'
 import { ROOM_ROOT } from '../src/roomCore'
 
 const apps: FirebaseApp[] = []
@@ -33,6 +33,18 @@ async function client(authenticate = true) {
 afterAll(async () => { for (const stop of hosts.values()) stop(); await Promise.all(apps.map(deleteApp)) })
 
 describe('Firebase Spark multiplayer integration', () => {
+  it('hands control to an online member without losing the room or identity',async()=>{
+    const [host,guest]=await Promise.all([client(),client()])
+    const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
+    await guest.call('joinRoom',{name:'Guest',code:roomId,actionId:randomUUID()})
+    const before=await host.room(roomId)
+    await transferHost(host.db,host.uid!,roomId,{type:'hostTransfer',targetUid:guest.uid,expectedVersion:before.version},randomUUID())
+    hosts.get(roomId)?.();hosts.set(roomId,serveRoom(guest.db,guest.uid!,roomId))
+    expect((await guest.room(roomId)).hostUid).toBe(guest.uid)
+    await expect(host.command(roomId,'randomSeats')).rejects.toBeDefined()
+    await guest.command(roomId,'randomSeats')
+    expect((await guest.room(roomId)).members[guest.uid!].host).toBe(true)
+  },30000)
   it('stores planned levels, chip colors and rebuys through the free database rules', async () => {
     const [host,guest]=await Promise.all([client(),client()])
     const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})

@@ -8,6 +8,8 @@ const routes = [
   {path: '/', component: () => import('./views/Home.vue')},
   {path: '/invite/:code', component: () => import('./views/Home.vue')},
   {path: '/room/:id', component: () => import('./views/Room.vue')},
+  {path: '/room/:id/display', component: () => import('./views/RoomDisplay.vue')},
+  {path: '/local', component: () => import('./views/LocalTable.vue')},
 ]
 const router = createRouter({history: createWebHistory(import.meta.env.BASE_URL), routes})
 createApp(App).use(router).mount('#app')

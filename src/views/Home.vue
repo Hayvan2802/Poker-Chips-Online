@@ -50,6 +50,7 @@ async function go(kind: 'createRoom' | 'joinRoom') {
       <p class="error" role="alert">{{error}}</p>
     </div>
     <div class="features"><span>◆ Keine Registrierung</span><span>◆ Sicher synchronisiert</span><span>◆ Für 2–9 Spieler</span></div>
+    <router-link to="/local" class="local-entry">Ohne Internet auf einem Gerät spielen →</router-link>
     <div class="home-version-wrap"><button class="home-version" :disabled="updateState.checking" @click="checkForUpdate" aria-label="Nach einer neuen Version suchen">v{{releases[0].version}} <span v-if="updateState.checking" class="refresh-spin" aria-hidden="true">↻</span></button><p v-if="updateState.message" class="version-message" role="status">{{updateState.message}}</p></div>
   </section>
 </template>

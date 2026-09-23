@@ -20,7 +20,7 @@ npm test
 npm run test:multiplayer
 ```
 
-Der Integrationstest startet ausschließlich Auth- und Database-Emulatoren mit dem isolierten Projekt `demo-poker-chips`. Er prüft unabhängige Spieler, atomare Sitzwahl, Gastrechte, gefälschte Absender, zwei vollständige Hände, doppelte Anfragen, Chip-Erhaltung, synchronisierte Blind-Level und erneutes Starten des Hosts. Die zusätzlichen Zustands-Tests prüfen Timer-Grenzen, Rundung, abgeschaltete Timer und alte Räume.
+Der Integrationstest startet ausschließlich Auth- und Database-Emulatoren mit dem isolierten Projekt `demo-poker-chips`. Er prüft unabhängige Spieler, atomare Sitzwahl, Gastrechte, gefälschte Absender, zwei vollständige Hände, doppelte Anfragen, Chip-Erhaltung, Blindpläne, Rebuys, Hostwechsel und erneutes Starten des Hosts. Die zusätzlichen Zustands-Tests prüfen Timer-Grenzen, Ante-Buchungen, Pausen, Cent-Rundung und alte Räume.
 
 Für eine lokale Oberfläche mit Emulatoren `.env.local` anlegen:
 
@@ -58,7 +58,7 @@ Die Datenbankregeln werden separat mit dem oben genannten Firebase-Befehl veröf
 
 ## Versionen und Updates
 
-`releases.json` ist die einzige inhaltliche Quelle für Version und deutsche Änderungstexte. `release:prepare` aktualisiert daraus `package.json` und `package-lock.json`; `release:check` und der Pages-Build verhindern Abweichungen. Aus dem neuesten Eintrag entstehen `version.json`, UI-Version und der versionsgebundene Service-Worker-Cache. Die Git-Historie wurde in der App rückwirkend von v0.0.1 bis v0.0.7 rekonstruiert; v0.0.8 ist diese Überarbeitung. Der schon veröffentlichte Tag v0.0.1 bleibt unverändert und verweist historisch auf einen späteren Entwicklungsstand.
+`releases.json` ist die einzige inhaltliche Quelle für Version und deutsche Änderungstexte. `release:prepare` aktualisiert daraus `package.json` und `package-lock.json`; `release:check` und der Pages-Build verhindern Abweichungen. Aus dem neuesten Eintrag entstehen `version.json`, UI-Version und der versionsgebundene Service-Worker-Cache. Die Git-Historie wurde in der App rückwirkend von v0.0.1 bis v0.0.7 rekonstruiert; v0.0.8 war die Safari- und Update-Überarbeitung, v0.0.9 erweitert den Spielabend in drei Phasen. Der schon veröffentlichte Tag v0.0.1 bleibt unverändert und verweist historisch auf einen späteren Entwicklungsstand.
 
 ```sh
 npm run release:prepare -- 0.0.9 "Änderung für Spieler" "Weitere Änderung"
@@ -70,7 +70,15 @@ npm run build:pages
 
 Das GitHub-Release wird erst nach erfolgreichem Deployment auf `main` erzeugt. Die Website prüft Updates nur beim Tippen auf die dezente Version unten auf der Startseite. Ein neuer Service Worker wartet auf die Zustimmung zum Neustart; während einer Hand erfolgt kein erzwungener Reload. `Was ist neu?` erscheint pro Gerät und Version einmal. Eine Erstinstallation zeigt nur den neuesten Eintrag, nach übersprungenen Versionen alle ungesehenen. Die Versionshistorie liegt unter **Einstellungen → Daten & App**. Weder Updates noch App-Cache-Verwaltung löschen den gespeicherten Namen, Firebase Auth oder Raumdaten.
 
-Die Einstellungen haben große mobile Kategorien für Darstellung, Name und App-Daten. Der Spielername wird unter dem bisherigen lokalen Schlüssel `name` gespeichert; vorhandene Namen werden weiterverwendet.
+Die Einstellungen haben große mobile Kategorien für Darstellung, optionale Töne, Name und App-Daten. Der Spielername wird unter dem bisherigen lokalen Schlüssel `name` gespeichert; vorhandene Namen werden weiterverwendet.
+
+## Drei neue Spielphasen ab v0.0.9
+
+1. **Tischführung:** Der Host kann Plätze auslosen, einen Tisch pausieren oder sperren und späten Einstieg zwischen Händen erlauben. Spieler können aussetzen und zweimal 30 Sekunden Zeitreserve nehmen. Handverlauf und Pot-Lupe zeigen Buchungen; die letzte Auszahlung lässt sich vor der nächsten Hand zurücknehmen.
+2. **Turnier und Cash:** Neben dem bisherigen Blind-Timer sind feste Blindpläne mit Pausen, Ante für alle oder Big-Blind-Ante, Chipfarben und Tischvorlagen auf diesem Gerät möglich. Rebuys und Add-ons werden nur zwischen Händen gebucht. Ein optionaler Euro-Buy-in erzeugt eine Cent-genaue Abrechnung mit Zahlungsvorschlägen; die App führt keine Zahlungen aus. Der Color-up-Hinweis betrifft nur physische Chips, digitale Stacks werden nicht gerundet.
+3. **Einladen und Rückblick:** QR-Code, Teilen und eine nur lesende TV-Ansicht helfen am Tisch. Der Host kann die Spielleitung an ein online anwesendes Mitglied übertragen, während kein Einsatz läuft. Auszahlungen speisen einen Abend-Rückblick mit größtem Pot, Gewinnerstatistik, Teilen und CSV-Export. Optionale Spielsignale lassen sich in den Einstellungen abschalten. Unter **Ohne Internet auf einem Gerät spielen** läuft eine lokale Runde ohne Firebase; dieser Spielstand bleibt im Browser dieses Geräts.
+
+Die TV-Ansicht verwendet dieselbe anonyme Firebase-Identität wie der angemeldete Tisch. Sie ist für ein weiteres Fenster auf einem bereits beigetretenen Gerät gedacht; ein fremdes Gerät muss dem privaten Raum zuerst regulär beitreten. Tischvorlagen und lokale Runden liegen im Gerätespeicher. Ein Service-Worker-Update löscht sie nicht, das manuelle Löschen von Websitedaten dagegen schon.
 
 ## iPhone, Safari und PWA
 
@@ -86,7 +94,7 @@ Der in `.env.production` enthaltene Schlüssel ist ausschließlich der öffentli
 
 - Räume werden atomar über sechsstellige Codes erstellt. Der Host kann einen Code vorgeben (z. B. `123456`) oder einen automatisch erzeugen lassen. Bereits belegte Codes werden abgewiesen, bestehende Tische niemals überschrieben. Spieler melden sich anonym an und treten per Code bei.
 - Spieler bekommen beim Beitritt automatisch einen freien Sitz. In der Lobby können sie auf einen freien Platz am runden Tisch wechseln. Die gleiche Sitzordnung bleibt im Spiel erhalten; Dealer, Small Blind, Big Blind und der aktive Spieler sind markiert.
-- Die Daten liegen unter `poker/v2`. Nur Mitglieder lesen den vollständigen Raum. Nur der ursprüngliche Host schreibt Mitgliedschaft, Einstellungen und Spielstand; Gäste schreiben eigene Anfragen und Presence.
+- Die Daten liegen unter `poker/v2`. Nur Mitglieder lesen den vollständigen Raum. Der jeweils eingetragene Host schreibt Mitgliedschaft, Einstellungen und Spielstand; Gäste schreiben eigene Anfragen und Presence. Ein Hostwechsel erfolgt atomar nur in der Lobby oder zwischen Händen.
 - Jede verarbeitete Anfrage hat eine `actionId`; Spielbefehle prüfen zusätzlich `expectedVersion`. Wiederholungen werden erkannt, konkurrierende Änderungen abgewiesen.
 - Jeder Zug hat 30 Sekunden Bedenkzeit. Die Frist liegt im gemeinsamen Spielstand und bleibt beim Neuladen erhalten. Der aktive Host verarbeitet abgelaufene Züge atomar als Fold; mehrere Host-Tabs können dieselbe Frist nicht doppelt ausführen. Bei einem pausierten Host erfolgt die Verarbeitung nach seiner Rückkehr. Gewinnerbestätigung und Kartenaufdecken haben keinen Zug-Timer.
 - Der Host darf Stack und Blinds in der Lobby ändern. Alle Spieler brauchen einen Sitz und müssen bereit sein.
