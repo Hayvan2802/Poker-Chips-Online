@@ -1,10 +1,83 @@
 [
-  {"version":"0.0.8","date":"2026-09-23","title":"Besser auf dem iPhone, klarer bei Updates","changes":["Die Einstellungen sind übersichtlicher und auf Smartphones leichter zu bedienen.","Die Version unten im Hauptmenü prüft Updates auf Wunsch und zeigt neue Änderungen an.","Start und Aktualisierung sind auf Safari robuster; ein Ladefehler zeigt einen verständlichen Hinweis statt einer weißen Seite.","Dein Spielername bleibt auf diesem Gerät für neue Tische und Beitritte gespeichert."]},
-  {"version":"0.0.7","date":"2026-09-22","title":"Der runde Pokertisch","changes":["Spieler sitzen sichtbar um einen runden Tisch und erhalten beim Beitritt automatisch einen Platz.","Blinds steigen nach einstellbarer Zeit zwischen den Händen; pro Zug gelten 30 Sekunden bis zum automatischen Fold.","Der Host bestätigt die Gewinner und verteilt den Pot. Raumcodes lassen sich selbst wählen oder erzeugen."]},
-  {"version":"0.0.6","date":"2026-09-22","title":"Zuverlässige Veröffentlichung","changes":["Der Website-Build und die automatischen Prüfungen laufen bei GitHub wieder zuverlässig."]},
-  {"version":"0.0.5","date":"2026-09-22","title":"Mehrspieler ohne Zahlungsmittel","changes":["Tische, Züge und Einsätze funktionieren über Firebase im kostenlosen Spark-Tarif."]},
-  {"version":"0.0.4","date":"2026-09-21","title":"Startseite auch ohne Firebase-Konfiguration","changes":["Die Startseite erscheint mit einer verständlichen Meldung, wenn Firebase noch nicht eingerichtet ist."]},
-  {"version":"0.0.3","date":"2026-09-21","title":"Website erreichbar","changes":["Die Veröffentlichung über GitHub Pages wurde repariert."]},
-  {"version":"0.0.2","date":"2026-09-21","title":"Poker Chips für Smartphones","changes":["Die mobile Oberfläche und die erste Firebase-Anbindung sind verfügbar."]},
-  {"version":"0.0.1","date":"2026-09-21","title":"Projektstart","changes":["Poker Chips Online wurde angelegt."]}
+  {
+    "version": "0.0.9",
+    "date": "2026-09-23",
+    "title": "Neues in v0.0.9",
+    "changes": [
+      "Plätze auslosen, Tisch pausieren, aussetzen und mehr Bedenkzeit nehmen.",
+      "Blindpläne mit Pausen, Antes, Chipfarben und Tischvorlagen für Turniere einrichten.",
+      "Rebuys und Add-ons buchen und Cash-Runden centgenau abrechnen.",
+      "Tisch per QR-Code teilen, auf einem TV anzeigen und die Spielleitung übergeben.",
+      "Abend-Rückblick teilen oder exportieren und ohne Internet auf einem Gerät spielen."
+    ]
+  },
+  {
+    "version": "0.0.8",
+    "date": "2026-09-23",
+    "title": "Besser auf dem iPhone, klarer bei Updates",
+    "changes": [
+      "Die Einstellungen sind übersichtlicher und auf Smartphones leichter zu bedienen.",
+      "Die Version unten im Hauptmenü prüft Updates auf Wunsch und zeigt neue Änderungen an.",
+      "Start und Aktualisierung sind auf Safari robuster; ein Ladefehler zeigt einen verständlichen Hinweis statt einer weißen Seite.",
+      "Dein Spielername bleibt auf diesem Gerät für neue Tische und Beitritte gespeichert."
+    ]
+  },
+  {
+    "version": "0.0.7",
+    "date": "2026-09-22",
+    "title": "Der runde Pokertisch",
+    "changes": [
+      "Spieler sitzen sichtbar um einen runden Tisch und erhalten beim Beitritt automatisch einen Platz.",
+      "Blinds steigen nach einstellbarer Zeit zwischen den Händen; pro Zug gelten 30 Sekunden bis zum automatischen Fold.",
+      "Der Host bestätigt die Gewinner und verteilt den Pot. Raumcodes lassen sich selbst wählen oder erzeugen."
+    ]
+  },
+  {
+    "version": "0.0.6",
+    "date": "2026-09-22",
+    "title": "Zuverlässige Veröffentlichung",
+    "changes": [
+      "Der Website-Build und die automatischen Prüfungen laufen bei GitHub wieder zuverlässig."
+    ]
+  },
+  {
+    "version": "0.0.5",
+    "date": "2026-09-22",
+    "title": "Mehrspieler ohne Zahlungsmittel",
+    "changes": [
+      "Tische, Züge und Einsätze funktionieren über Firebase im kostenlosen Spark-Tarif."
+    ]
+  },
+  {
+    "version": "0.0.4",
+    "date": "2026-09-21",
+    "title": "Startseite auch ohne Firebase-Konfiguration",
+    "changes": [
+      "Die Startseite erscheint mit einer verständlichen Meldung, wenn Firebase noch nicht eingerichtet ist."
+    ]
+  },
+  {
+    "version": "0.0.3",
+    "date": "2026-09-21",
+    "title": "Website erreichbar",
+    "changes": [
+      "Die Veröffentlichung über GitHub Pages wurde repariert."
+    ]
+  },
+  {
+    "version": "0.0.2",
+    "date": "2026-09-21",
+    "title": "Poker Chips für Smartphones",
+    "changes": [
+      "Die mobile Oberfläche und die erste Firebase-Anbindung sind verfügbar."
+    ]
+  },
+  {
+    "version": "0.0.1",
+    "date": "2026-09-21",
+    "title": "Projektstart",
+    "changes": [
+      "Poker Chips Online wurde angelegt."
+    ]
+  }
 ]

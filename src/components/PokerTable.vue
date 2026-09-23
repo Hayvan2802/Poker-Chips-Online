@@ -1,7 +1,7 @@
 <script setup lang="ts">
 interface TableSeat {
   seat: number; uid: string; name: string; ready?: boolean; stack?: number
-  roundBet?: number; folded?: boolean; allIn?: boolean
+  roundBet?: number; folded?: boolean; allIn?: boolean; sittingOut?: boolean
 }
 const props = defineProps<{
   seats: TableSeat[]; myUid: string; lobby?: boolean; locked?: boolean
@@ -38,7 +38,8 @@ function label(seat: number) {
           <span v-if="seat - 1 === dealer" class="position-marker dealer-marker" title="Dealer">D</span>
           <span v-if="seat - 1 === smallBlind" class="position-marker small-marker" title="Small Blind">SB</span>
           <span v-if="seat - 1 === bigBlind" class="position-marker big-marker" title="Big Blind">BB</span>
-          <span v-if="at(seat - 1)!.folded" class="seat-status">Gepasst</span>
+          <span v-if="at(seat - 1)!.sittingOut" class="seat-status">Setzt aus</span>
+          <span v-else-if="at(seat - 1)!.folded" class="seat-status">Gepasst</span>
           <span v-else-if="at(seat - 1)!.allIn" class="seat-status">All-in</span>
           <span v-else-if="at(seat - 1)!.uid === turn" class="seat-status">Am Zug</span>
         </span>

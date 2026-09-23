@@ -6,7 +6,7 @@
           "$roomId": {
             ".read": "auth != null && (!data.exists() || data.child('members').child(auth.uid).exists())",
             ".write": "auth != null && newData.exists() && ((!data.exists() && newData.child('hostUid').val() === auth.uid && newData.child('status').val() === 'lobby' && newData.child('version').val() === 1) || data.child('hostUid').val() === auth.uid)",
-            ".validate": "$roomId.matches(/^[0-9]{6}$/) && newData.hasChildren(['code','name','hostUid','creationAction','status','version','createdAt','settings','members']) && newData.child('code').val() === $roomId && newData.child('hostUid').isString() && (!data.exists() || newData.child('hostUid').val() === data.child('hostUid').val()) && newData.child('members').child(newData.child('hostUid').val()).child('host').val() === true",
+            ".validate": "$roomId.matches(/^[0-9]{6}$/) && newData.hasChildren(['code','name','hostUid','creationAction','status','version','createdAt','settings','members']) && newData.child('code').val() === $roomId && newData.child('hostUid').isString() && (!data.exists() || newData.child('hostUid').val() === data.child('hostUid').val() || (auth.uid === data.child('hostUid').val() && data.child('members').child(newData.child('hostUid').val()).exists() && (data.child('status').val() === 'lobby' || data.child('game/phase').val() === 'settled' || data.child('game/phase').val() === 'waiting-deal'))) && newData.child('members').child(newData.child('hostUid').val()).child('host').val() === true",
             "name": {
               ".validate": "newData.isString() && newData.val().length <= 40"
             },
@@ -23,11 +23,30 @@
               },
               "blindMultiplier": {
                 ".validate": "newData.val() === 1.5 || newData.val() === 2"
+              },
+              "ante": {
+                ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= newData.parent().child('bb').val()"
+              },
+              "anteMode": {
+                ".validate": "newData.val() === 'each' || newData.val() === 'bb'"
+              },
+              "buyInCents": {
+                ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 1000000000"
+              },
+              "blindPlan": {
+                "$step": {
+                  ".validate": "newData.hasChildren(['kind','minutes']) && (newData.child('kind').val() === 'level' || newData.child('kind').val() === 'break') && newData.child('minutes').isNumber() && newData.child('minutes').val() >= 1 && newData.child('minutes').val() <= 180"
+                }
+              },
+              "denominations": {
+                "$chip": {
+                  ".validate": "newData.hasChildren(['color','value']) && newData.child('color').isString() && newData.child('value').isNumber() && newData.child('value').val() > 0"
+                }
               }
             },
             "members": {
               "$uid": {
-                ".validate": "newData.hasChildren(['uid','name','host','ready']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('ready').isBoolean() && newData.child('host').val() === ($uid === newData.parent().parent().child('hostUid').val()) && (!newData.child('seat').exists() || (newData.child('seat').isNumber() && newData.child('seat').val() % 1 === 0 && newData.child('seat').val() >= 0 && newData.child('seat').val() <= 8))"
+                ".validate": "newData.hasChildren(['uid','name','host','ready']) && newData.child('uid').val() === $uid && newData.child('name').isString() && newData.child('name').val().length >= 2 && newData.child('name').val().length <= 24 && newData.child('ready').isBoolean() && newData.child('host').val() === ($uid === newData.parent().parent().child('hostUid').val()) && (!newData.child('seat').exists() || (newData.child('seat').isNumber() && newData.child('seat').val() % 1 === 0 && newData.child('seat').val() >= 0 && newData.child('seat').val() <= 8)) && (!newData.child('timeBank').exists() || (newData.child('timeBank').isNumber() && newData.child('timeBank').val() >= 0 && newData.child('timeBank').val() <= 2 && newData.child('timeBank').val() % 1 === 0)) && (!newData.child('sittingOut').exists() || newData.child('sittingOut').isBoolean())"
               }
             },
             "presence": {
@@ -39,7 +58,7 @@
               }
             },
             "blindClock": {
-              ".validate": "newData.hasChildren(['level', 'nextIncreaseAt']) && newData.child('level').isNumber() && newData.child('level').val() >= 1 && newData.child('level').val() % 1 === 0 && newData.child('nextIncreaseAt').isNumber() && newData.child('nextIncreaseAt').val() >= 0"
+              ".validate": "newData.hasChildren(['level', 'nextIncreaseAt']) && newData.child('level').isNumber() && newData.child('level').val() >= 1 && newData.child('level').val() % 1 === 0 && newData.child('nextIncreaseAt').isNumber() && newData.child('nextIncreaseAt').val() >= 0 && (!newData.child('breakUntil').exists() || (newData.child('breakUntil').isNumber() && newData.child('breakUntil').val() > 0))"
             },
             "turnClock": {
               ".validate": "newData.hasChildren(['uid','deadline']) && newData.child('uid').isString() && newData.child('uid').val() === newData.parent().child('game/turn').val() && newData.child('deadline').isNumber() && newData.child('deadline').val() > 0"
@@ -79,6 +98,40 @@
                   },
                   "bb": {
                     ".validate": "newData.isNumber()"
+                  },
+                  "ante": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "anteMode": {
+                    ".validate": "newData.val() === 'each' || newData.val() === 'bb'"
+                  },
+                  "buyInCents": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "targetUid": {
+                    ".validate": "newData.isString() && newData.val().length <= 128"
+                  },
+                  "chips": {
+                    ".validate": "newData.isNumber()"
+                  },
+                  "blindPlan": {
+                    "$step": {
+                      ".validate": "newData.hasChildren(['kind','minutes']) && (newData.child('kind').val() === 'level' || newData.child('kind').val() === 'break')"
+                    }
+                  },
+                  "denominations": {
+                    "$chip": {
+                      ".validate": "newData.hasChildren(['color','value'])"
+                    }
+                  },
+                  "joinOpen": {
+                    ".validate": "newData.isBoolean()"
+                  },
+                  "lateRegistration": {
+                    ".validate": "newData.isBoolean()"
+                  },
+                  "sittingOut": {
+                    ".validate": "newData.isBoolean()"
                   },
                   "blindMinutes": {
                     ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 180"

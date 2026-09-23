@@ -1,12 +1,12 @@
 export const MAX_SEATS = 9
 export type Phase = 'waiting-deal'|'preflop'|'waiting-flop'|'flop'|'waiting-turn'|'turn'|'waiting-river'|'river'|'showdown'|'settled'
-export interface Player { uid:string; name:string; seat:number; stack:number; folded:boolean; allIn:boolean; roundBet:number; handBet:number; actedAtBet:number }
+export interface Player { uid:string; name:string; seat:number; stack:number; folded:boolean; allIn:boolean; roundBet:number; handBet:number; actedAtBet:number; sittingOut?:boolean }
 export interface Pot { amount:number; eligible:string[] }
-export interface Game { handId:number; dealer:number; sb:number; bb:number; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean }
+export interface Game { handId:number; dealer:number; sb:number; bb:number; ante?:number; anteMode?:'each'|'bb'; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean }
 export type Move={kind:'fold'|'check'|'call'|'bet'|'raise'|'all-in';to?:number}
 
 const seated = (g:Game) => Object.values(g.players).sort((a,b)=>a.seat-b.seat)
-const active = (p:Player) => !p.folded && !p.allIn && p.stack>0
+const active = (p:Player) => !p.sittingOut && !p.folded && !p.allIn && p.stack>0
 const integer = (n:number) => Number.isSafeInteger(n) && n>=0
 export const next = (g:Game, seat:number, predicate=active) => {
   const ps=seated(g)
@@ -18,15 +18,17 @@ export function assertChips(g:Game){
   if(ps.some(p=>![p.stack,p.handBet,p.roundBet].every(integer)||p.roundBet>p.handBet)
     ||ps.reduce((sum,p)=>sum+p.stack+p.handBet,0)!==g.totalChips)throw Error('Chip-Erhaltung verletzt')
 }
-export function createGame(players:Array<Pick<Player,'uid'|'name'|'seat'>>, stack:number, sb:number, bb:number, dealer:number):Game {
+export function createGame(players:Array<Pick<Player,'uid'|'name'|'seat'>>, stack:number, sb:number, bb:number, dealer:number, ante=0, anteMode:'each'|'bb'='each'):Game {
   if(players.length<2||players.length>MAX_SEATS||![stack,sb,bb].every(integer)||stack<=0||sb<=0||sb>=bb
+    ||!integer(ante)||ante>bb||!['each','bb'].includes(anteMode)
     ||players.some(p=>!p.uid||!Number.isInteger(p.seat)||p.seat<0||p.seat>=MAX_SEATS)
     ||new Set(players.map(p=>p.uid)).size!==players.length||new Set(players.map(p=>p.seat)).size!==players.length
     ||!players.some(p=>p.seat===dealer)||!Number.isSafeInteger(stack*players.length))throw Error('Ungültige Spieleinstellungen')
   const map=Object.fromEntries(players.map(p=>[p.uid,{...p,stack,folded:false,allIn:false,roundBet:0,handBet:0,actedAtBet:-1}]))
-  return {handId:1,dealer,sb,bb,phase:'waiting-deal',turn:null,highestBet:0,minRaise:bb,players:map,pots:[],totalChips:stack*players.length,paid:false}
+  return {handId:1,dealer,sb,bb,ante,anteMode,phase:'waiting-deal',turn:null,highestBet:0,minRaise:bb,players:map,pots:[],totalChips:stack*players.length,paid:false}
 }
 function commit(p:Player, amount:number){const paid=Math.min(amount,p.stack);p.stack-=paid;p.roundBet+=paid;p.handBet+=paid;p.allIn=p.stack===0;return paid}
+function commitDead(p:Player, amount:number){const paid=Math.min(amount,p.stack);p.stack-=paid;p.handBet+=paid;p.allIn=p.stack===0;return paid}
 function advanceRound(g:Game){
   for(const p of seated(g)){p.roundBet=0;p.actedAtBet=-1}
   g.highestBet=0;g.minRaise=g.bb;g.turn=null
@@ -41,10 +43,15 @@ function assignTurn(g:Game,after:number){
 }
 export function deal(g:Game){
   if(g.phase!=='waiting-deal'||g.paid)throw Error('Die Karten wurden bereits bestätigt')
-  const dealer=seated(g).find(p=>p.seat===g.dealer&&p.stack>0);if(!dealer)throw Error('Dealer fehlt')
-  const heads=seated(g).filter(p=>p.stack>0).length===2
-  const small=heads?dealer:next(g,g.dealer,p=>p.stack>0)!;const big=next(g,small.seat,p=>p.stack>0)!
-  commit(small,g.sb);commit(big,g.bb);g.highestBet=Math.max(small.roundBet,big.roundBet);g.phase='preflop'
+  const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
+  if(playing.length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
+  let dealer=playing.find(p=>p.seat===g.dealer)
+  if(!dealer){dealer=next(g,g.dealer,p=>p.stack>0&&!p.sittingOut);if(!dealer)throw Error('Dealer fehlt');g.dealer=dealer.seat}
+  const heads=playing.length===2
+  const small=heads?dealer:next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!;const big=next(g,small.seat,p=>p.stack>0&&!p.sittingOut)!
+  if(g.ante){if(g.anteMode==='bb')commitDead(big,g.ante*playing.length);else for(const player of playing)commitDead(player,g.ante)}
+  commit(small,g.sb);commit(big,g.bb)
+  g.highestBet=Math.max(small.roundBet,big.roundBet);g.phase='preflop'
   assignTurn(g,big.seat);assertChips(g);return g
 }
 export function act(g:Game,uid:string,move:Move){
@@ -100,8 +107,22 @@ export function payout(g:Game,winners:string[][]){
 }
 export function nextHand(g:Game){
   if(g.phase!=='settled'||!g.paid)throw Error('Zuerst die aktuelle Hand abrechnen')
-  if(seated(g).filter(p=>p.stack>0).length<2)throw Error('Mindestens zwei Spieler benötigen Chips')
-  g.dealer=next(g,g.dealer,p=>p.stack>0)!.seat;g.handId++;g.phase='waiting-deal';g.paid=false;g.turn=null;g.highestBet=0;g.minRaise=g.bb;g.pots=[]
-  for(const p of seated(g)){p.folded=p.stack===0;p.allIn=false;p.roundBet=0;p.handBet=0;p.actedAtBet=-1}
+  if(seated(g).filter(p=>p.stack>0&&!p.sittingOut).length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
+  g.dealer=next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!.seat;g.handId++;g.phase='waiting-deal';g.paid=false;g.turn=null;g.highestBet=0;g.minRaise=g.bb;g.pots=[]
+  for(const p of seated(g)){p.folded=p.stack===0||!!p.sittingOut;p.allIn=false;p.roundBet=0;p.handBet=0;p.actedAtBet=-1}
+  assertChips(g);return g
+}
+
+export function addLatePlayer(g:Game, player:Pick<Player,'uid'|'name'|'seat'>, stack:number){
+  if(!['waiting-deal','settled'].includes(g.phase)||g.players[player.uid]||!Number.isSafeInteger(stack)||stack<=0||Object.values(g.players).some(p=>p.seat===player.seat))throw Error('Später Einstieg nur zwischen Händen möglich')
+  if(!Number.isSafeInteger(g.totalChips+stack))throw Error('Chip-Grenze erreicht')
+  g.players[player.uid]={...player,stack,folded:false,allIn:false,roundBet:0,handBet:0,actedAtBet:-1}
+  g.totalChips+=stack;assertChips(g);return g
+}
+
+export function addChips(g:Game, uid:string, amount:number){
+  if(!['waiting-deal','settled'].includes(g.phase)||!g.players[uid]||!Number.isSafeInteger(amount)||amount<=0||amount>1000000000||!Number.isSafeInteger(g.totalChips+amount)||!Number.isSafeInteger(g.players[uid].stack+amount))throw Error('Rebuy oder Add-on nur zwischen Händen mit gültigen Chips möglich')
+  g.players[uid].stack+=amount;g.totalChips+=amount
+  if(g.phase==='waiting-deal'&&!g.players[uid].sittingOut)g.players[uid].folded=false
   assertChips(g);return g
 }

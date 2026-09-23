@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, get, ref, set, onValue } from 'firebase/database'
-import { createRoom, serveRoom, submitRequest } from '../src/roomService'
+import { createRoom, serveRoom, submitRequest, transferHost } from '../src/roomService'
 import { ROOM_ROOT } from '../src/roomCore'
 
 const apps: FirebaseApp[] = []
@@ -33,6 +33,62 @@ async function client(authenticate = true) {
 afterAll(async () => { for (const stop of hosts.values()) stop(); await Promise.all(apps.map(deleteApp)) })
 
 describe('Firebase Spark multiplayer integration', () => {
+  it('hands control to an online member without losing the room or identity',async()=>{
+    const [host,guest]=await Promise.all([client(),client()])
+    const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
+    await guest.call('joinRoom',{name:'Guest',code:roomId,actionId:randomUUID()})
+    const before=await host.room(roomId)
+    await transferHost(host.db,host.uid!,roomId,{type:'hostTransfer',targetUid:guest.uid,expectedVersion:before.version},randomUUID())
+    hosts.get(roomId)?.();hosts.set(roomId,serveRoom(guest.db,guest.uid!,roomId))
+    expect((await guest.room(roomId)).hostUid).toBe(guest.uid)
+    await expect(host.command(roomId,'randomSeats')).rejects.toBeDefined()
+    await guest.command(roomId,'randomSeats')
+    expect((await guest.room(roomId)).members[guest.uid!].host).toBe(true)
+  },30000)
+  it('stores planned levels, chip colors and rebuys through the free database rules', async () => {
+    const [host,guest]=await Promise.all([client(),client()])
+    const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
+    await guest.call('joinRoom',{name:'Guest',code:roomId,actionId:randomUUID()})
+    await host.command(roomId,'settings',{stack:10000,sb:50,bb:100,blindMinutes:1,blindMultiplier:2,ante:10,anteMode:'bb',buyInCents:1000,
+      blindPlan:[{kind:'level',sb:50,bb:100,minutes:1,ante:10,anteMode:'bb'},{kind:'break',minutes:5},{kind:'level',sb:100,bb:200,minutes:1,ante:20,anteMode:'bb'}],
+      denominations:[{color:'#ffffff',value:25},{color:'#2563eb',value:100}]})
+    await host.command(roomId,'ready');await guest.command(roomId,'ready');await host.command(roomId,'start')
+    await host.command(roomId,'rebuy',{targetUid:guest.uid,chips:5000})
+    const room=await guest.room(roomId)
+    expect(room.game.totalChips).toBe(25000)
+    expect(room.buyIns[guest.uid!]).toBe(1500)
+    expect(room.settings.blindPlan).toHaveLength(3)
+    await expect(guest.command(roomId,'rebuy',{targetUid:guest.uid,chips:5000})).rejects.toThrow('Host')
+  },30000)
+  it('keeps pause, time reserve, payout correction and late entry authoritative across clients', async () => {
+    const [host, guest, third] = await Promise.all([client(), client(), client()])
+    const {roomId} = await host.call('createRoom', {name:'Host', actionId:randomUUID()})
+    await guest.call('joinRoom', {name:'Guest', code:roomId, actionId:randomUUID()})
+    await host.command(roomId, 'entryPolicy', {joinOpen:false, lateRegistration:true})
+    await expect(third.call('joinRoom', {name:'Third', code:roomId, actionId:randomUUID()})).rejects.toThrow('geschlossen')
+    await host.command(roomId, 'entryPolicy', {joinOpen:true, lateRegistration:true})
+    await host.command(roomId, 'ready'); await guest.command(roomId, 'ready')
+    await host.command(roomId, 'start'); await host.command(roomId, 'deal')
+    const firstDeadline = (await guest.room(roomId)).turnClock.deadline
+    await host.command(roomId, 'timeBank')
+    expect((await guest.room(roomId)).turnClock.deadline).toBe(firstDeadline + 30000)
+    await expect(guest.command(roomId, 'timeBank')).rejects.toThrow('Zeitreserve')
+    await host.command(roomId, 'pause')
+    await expect(host.command(roomId, 'act', {move:{kind:'fold'}})).rejects.toThrow('pausiert')
+    await host.command(roomId, 'resume')
+    await host.command(roomId, 'act', {move:{kind:'fold'}})
+    await host.command(roomId, 'payout', {winners:[[guest.uid],[guest.uid]]})
+    await expect(guest.command(roomId, 'undoPayout')).rejects.toThrow('Host')
+    await host.command(roomId, 'undoPayout')
+    expect((await guest.room(roomId)).game.phase).toBe('showdown')
+    await host.command(roomId, 'payout', {winners:[[guest.uid],[guest.uid]]})
+    await third.call('joinRoom', {name:'Third', code:roomId, actionId:randomUUID()})
+    const state = await host.room(roomId)
+    expect(state.game.totalChips).toBe(state.settings.stack * 3)
+    expect(state.game.players[third.uid!].stack).toBe(state.settings.stack)
+    expect(state.lastPayout).toBeUndefined()
+  }, 30000)
+
   it('authenticates independent players, arbitrates seats, protects writes and completes two real hands', async () => {
     const [host, guest, outsider] = await Promise.all([client(), client(), client()])
     const create = { name: 'Host', actionId: randomUUID() }

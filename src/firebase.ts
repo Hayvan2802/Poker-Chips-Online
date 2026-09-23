@@ -1,7 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously, type User } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, onDisconnect, onValue, ref, remove, set, type DatabaseReference } from 'firebase/database'
-import { createRoom, serveRoom, submitRequest } from './roomService'
+import { createRoom, serveRoom, submitRequest, transferHost } from './roomService'
 import { ROOM_ROOT, type RoomState } from './roomCore'
 import {firebaseConfig as config, firebaseConfigured, configurationError} from './firebaseConfig'
 import {actionId as newActionId} from './browser'
@@ -40,6 +40,7 @@ export async function command<T>(name: string, payload: Record<string, any>): Pr
   if (name === 'joinRoom') return await submitRequest(services.db, user.uid, payload.code, 'joinRoom', {name: payload.name}, actionId) as T
   if (name === 'roomCommand') {
     const {roomId, ...data} = payload
+    if (data.type === 'hostTransfer') return await transferHost(services.db,user.uid,roomId,data,actionId) as T
     return await submitRequest(services.db, user.uid, roomId, 'roomCommand', data, actionId) as T
   }
   throw Error('Unbekannte Aktion')
@@ -71,6 +72,7 @@ export async function watchRoom<T>(id: string, callbacks: {
   const stopRoom = onValue(ref(services.db, `${ROOM_ROOT}/rooms/${id}`), snapshot => {
     if (disposed) return
     const value = snapshot.val() as RoomState | null
+    if (value?.hostUid !== user.uid && stopServing) {stopServing();stopServing=undefined}
     if (value?.hostUid === user.uid && !stopServing) stopServing = serveRoom(services.db, user.uid, id, fail)
     callbacks.room(value as T | null)
   }, fail)
