@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest'
-import {createGame,deal,assertChips} from '../src/engine'
-import {applyRequest,newRoom,type RoomRequest,type RoomState} from '../src/roomCore'
-import {cashSettlement} from '../src/settlement'
+import {createGame,deal,assertChips} from '../src/game/engine'
+import {applyRequest,newRoom,type RoomRequest,type RoomState} from '../src/game/roomCore'
+import {cashSettlement} from '../src/game/settlement'
 
 const t=1_800_000_000_000
 let seq=0

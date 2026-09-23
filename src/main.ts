@@ -1,8 +1,8 @@
 import {createApp} from 'vue'
 import {createRouter, createWebHistory} from 'vue-router'
 import App from './App.vue'
-import './style.css'
-import './table.css'
+import './styles/style.css'
+import './styles/table.css'
 
 const routes = [
   {path: '/', component: () => import('./views/Home.vue')},

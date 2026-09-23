@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {createGame,deal,act,buildPots,payout,reveal,nextHand,assertChips} from '../src/engine'
+import {createGame,deal,act,buildPots,payout,reveal,nextHand,assertChips} from '../src/game/engine'
 const ps=[{uid:'a',name:'Ada',seat:0},{uid:'b',name:'Bo',seat:1},{uid:'c',name:'Cy',seat:2}]
 
 describe('Poker state machine',()=>{

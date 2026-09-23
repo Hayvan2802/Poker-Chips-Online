@@ -1,7 +1,7 @@
 import {describe, expect, it} from 'vitest'
-import {applyRequest, applyTurnTimeout, newRoom, type RoomState, type RoomRequest} from '../src/roomCore'
-import {blindCountdown, raisedBlinds} from '../src/blinds'
-import {assertChips} from '../src/engine'
+import {applyRequest, applyTurnTimeout, newRoom, type RoomState, type RoomRequest} from '../src/game/roomCore'
+import {blindCountdown, raisedBlinds} from '../src/game/blinds'
+import {assertChips} from '../src/game/engine'
 
 const beginning = 1800000000000
 let sequence = 0

@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest'
-import {applyRequest, applyTurnTimeout, newRoom, type RoomRequest, type RoomState} from '../src/roomCore'
-import {assertChips} from '../src/engine'
+import {applyRequest, applyTurnTimeout, newRoom, type RoomRequest, type RoomState} from '../src/game/roomCore'
+import {assertChips} from '../src/game/engine'
 
 const start = 1_800_000_000_000
 let sequence = 0

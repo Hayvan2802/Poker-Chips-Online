@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import releases from './releases.json'
 import packageInfo from './package.json'
 import lockInfo from './package-lock.json'
+import {packageVersion} from './shared/versioning.mjs'
 
 const runtime = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }
 const base = runtime.process?.env?.GITHUB_PAGES ? '/Poker-Chips-Online/' : '/'
@@ -12,7 +13,8 @@ export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', 'VITE_')
   const required = ['API_KEY', 'AUTH_DOMAIN', 'DATABASE_URL', 'PROJECT_ID', 'APP_ID']
   if (command === 'build') {
-    if (packageInfo.version !== releases[0].version || lockInfo.version !== releases[0].version || lockInfo.packages[''].version !== releases[0].version) throw Error('Release, Paket und Lockdatei müssen dieselbe Version haben.')
+    const npmVersion = packageVersion(releases[0].version)
+    if (packageInfo.version !== npmVersion || lockInfo.version !== npmVersion || lockInfo.packages[''].version !== npmVersion) throw Error('Release, Paket und Lockdatei müssen dieselbe Version haben.')
     const missing = required.filter(key => !(runtime.process?.env?.[`VITE_FIREBASE_${key}`] || env[`VITE_FIREBASE_${key}`])?.trim())
     if (missing.length) throw new Error(`Firebase-Konfiguration fehlt: ${missing.map(key => `VITE_FIREBASE_${key}`).join(', ')}`)
     const emulators = runtime.process?.env?.VITE_USE_EMULATORS ?? env.VITE_USE_EMULATORS
@@ -24,11 +26,11 @@ export default defineConfig(({ command, mode }) => {
   plugins: [
     {
       name: 'release-metadata',
-      generateBundle() { this.emitFile({type: 'asset', fileName: 'version.json', source: JSON.stringify(releases[0])}) },
+      generateBundle() { this.emitFile({type: 'asset', fileName: 'version.json', source: JSON.stringify({version: packageInfo.version, label: releases[0].version, date: releases[0].date, title: releases[0].title, changes: releases[0].changes})}) },
       configureServer(server) {
         server.middlewares.use((req,res,next) => {
           if (req.url?.split('?')[0] !== `${base}version.json`) return next()
-          res.setHeader('Content-Type','application/json'); res.setHeader('Cache-Control','no-store'); res.end(JSON.stringify(releases[0]))
+          res.setHeader('Content-Type','application/json'); res.setHeader('Cache-Control','no-store'); res.end(JSON.stringify({version: packageInfo.version, label: releases[0].version, date: releases[0].date, title: releases[0].title, changes: releases[0].changes}))
         })
       },
     },

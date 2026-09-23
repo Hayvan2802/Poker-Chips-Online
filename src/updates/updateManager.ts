@@ -1,6 +1,7 @@
 import {reactive} from 'vue'
-import releases from '../releases.json'
+import releases from '../../releases.json'
 import {isNewerVersion} from './updates'
+import {displayVersion} from '../../shared/versioning.mjs'
 
 export const updateState = reactive({
   checking: false,
@@ -37,7 +38,7 @@ export function initUpdates() {
   window.addEventListener('online', checkWhenVisible)
 }
 
-async function remoteVersion(): Promise<string> {
+async function remoteVersion(): Promise<{version: string; label: string}> {
   const controller = typeof AbortController === 'function' ? new AbortController() : undefined
   const timer = controller ? window.setTimeout(() => controller.abort(), 8000) : undefined
   try {
@@ -48,7 +49,9 @@ async function remoteVersion(): Promise<string> {
     if (!response.ok) throw Error('Die Versionsprüfung ist gerade nicht erreichbar.')
     const value: unknown = await response.json()
     if (!value || typeof value !== 'object' || !('version' in value) || typeof value.version !== 'string') throw Error('Ungültige Versionsantwort.')
-    return value.version
+    const label = displayVersion('label' in value && typeof value.label === 'string' ? value.label : value.version)
+    if (!label || displayVersion(value.version) !== label) throw Error('Ungültige Versionsantwort.')
+    return {version: value.version, label}
   } finally { if (timer) clearTimeout(timer) }
 }
 
@@ -64,8 +67,8 @@ export function checkForUpdate(silent = false): Promise<void> {
     try {
       if (!navigator.onLine) throw Error('Du bist offline. Bitte verbinde dich und versuche es erneut.')
       const next = await remoteVersion()
-      updateState.remoteVersion = next
-      const newer = isNewerVersion(next, releases[0].version)
+      updateState.remoteVersion = next.label
+      const newer = isNewerVersion(next.version, releases[0].version)
       if (newer) {
         if ('serviceWorker' in navigator) {
           // A failed worker lookup or refresh must not hide a valid update notice.
@@ -74,7 +77,7 @@ export function checkForUpdate(silent = false): Promise<void> {
             if (!registration?.waiting) await registration?.update()
           } catch { /* The update can still be offered and retried later. */ }
         }
-        updateState.available = manualRequested || next !== dismissedVersion
+        updateState.available = manualRequested || next.label !== dismissedVersion
         updateState.message = ''
       } else {
         updateState.available = false

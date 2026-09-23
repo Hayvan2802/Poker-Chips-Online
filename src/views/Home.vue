@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {configurationError, firebaseConfigured, firebaseError} from '../firebaseConfig'
-import {playerName, savePlayerName} from '../profile'
-import {updateState, checkForUpdate} from '../updateManager'
-import {forgetRecentRoom, readRecentRoom, rememberRoom} from '../recentRoom'
+import {configurationError, firebaseConfigured, firebaseError} from '../online/firebaseConfig'
+import {playerName, savePlayerName} from '../device/profile'
+import {updateState, checkForUpdate} from '../updates/updateManager'
+import {forgetRecentRoom, readRecentRoom, rememberRoom} from '../device/recentRoom'
 import releases from '../../releases.json'
 
 const route = useRoute(), router = useRouter()
@@ -23,7 +23,7 @@ async function go(kind: 'createRoom' | 'joinRoom') {
     busy.value = true
     error.value = ''
     savePlayerName(name.value)
-    const {command} = await import('../firebase')
+    const {command} = await import('../online/firebase')
     const result = await command<{ roomId: string }>(kind, { name: name.value.trim(), code: kind === 'joinRoom' ? code.value.trim() : codeMode.value === 'custom' ? customCode.value.trim() : '' })
     rememberRoom(result.roomId)
     recentRoom.value = result.roomId

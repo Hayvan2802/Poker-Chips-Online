@@ -1,4 +1,4 @@
-import {validBlindPlan, validDenominations, type BlindSettings} from './blinds'
+import {validBlindPlan, validDenominations, type BlindSettings} from '../game/blinds'
 
 const KEY = 'poker-chips-table-presets-v1'
 export interface TablePreset {name:string;settings:BlindSettings}

@@ -1,105 +1,52 @@
 # Poker Chips Online
 
-Mobile Begleit-App für echte Karten und digitale Chips, für 2–9 Personen. Vue 3, TypeScript, Firebase Authentication und Realtime Database. Die Website läuft auf GitHub Pages.
+Pokerabend mit echten Karten und digitalen Chips für 2–9 Personen. Die mobile Vue-App läuft auf [GitHub Pages](https://hayvan2802.github.io/Poker-Chips-Online/) und synchronisiert Tische über Firebase Realtime Database im kostenlosen Spark-Tarif. Für eine Runde an einem Gerät gibt es einen lokalen Modus.
 
-## Kostenlos ohne Zahlungsmittel
+## Starten
 
-Die App verwendet den **Firebase-Spark-Tarif**. Sie benötigt weder Cloud Functions noch ein Blaze-Upgrade oder ein hinterlegtes Zahlungsmittel. Die kostenlosen Kontingente von Firebase gelten weiterhin.
-
-Der Browser des Hosts leitet den Tisch: Gäste senden Aktionen an eine geschützte Warteschlange; der Host prüft sie mit der gemeinsamen Poker-Engine und schreibt den Spielstand in einer Datenbanktransaktion. **Der Host muss den Tisch geöffnet und sein Gerät wach halten.** Nach dem erneuten Öffnen desselben Tisches im selben Browser wird die Verarbeitung fortgesetzt. Abgelaufene Anfragen werden abgewiesen.
-
-Das ist eine Vertrauensrunde: Der Host ist Spielleiter und bestätigt auch die Gewinner der echten Karten. Die Regeln schützen gegen direkte Spielstand-Änderungen durch Gäste; sie schützen nicht gegen einen absichtlich manipulierten Host-Client. Die anonyme Identität bleibt im Browser gespeichert. Werden dessen Websitedaten gelöscht, geht die Host-Identität verloren.
-
-## Lokale Entwicklung
-
-Voraussetzungen: Node.js 22 und Java 21 für die Firebase-Emulatoren.
+Node.js 22 und für die Firebase-Emulatoren Java 21 installieren. Dann:
 
 ```sh
 npm ci
-npm test
-npm run test:multiplayer
-```
-
-Der Integrationstest startet ausschließlich Auth- und Database-Emulatoren mit dem isolierten Projekt `demo-poker-chips`. Er prüft unabhängige Spieler, atomare Sitzwahl, Gastrechte, gefälschte Absender, zwei vollständige Hände, doppelte Anfragen, Chip-Erhaltung, Blindpläne, Rebuys, Hostwechsel und erneutes Starten des Hosts. Die zusätzlichen Zustands-Tests prüfen Timer-Grenzen, Ante-Buchungen, Pausen, Cent-Rundung und alte Räume.
-
-Für eine lokale Oberfläche mit Emulatoren `.env.local` anlegen:
-
-```dotenv
-VITE_FIREBASE_API_KEY=fake-api-key
-VITE_FIREBASE_AUTH_DOMAIN=demo-poker-chips.firebaseapp.com
-VITE_FIREBASE_DATABASE_URL=https://demo-poker-chips-default-rtdb.firebaseio.com
-VITE_FIREBASE_PROJECT_ID=demo-poker-chips
-VITE_FIREBASE_APP_ID=demo-app
-VITE_USE_EMULATORS=true
-```
-
-Dann in zwei Terminals:
-
-```sh
-npx firebase emulators:start --project demo-poker-chips --only auth,database
 npm run dev
 ```
 
-## Firebase und Veröffentlichung
-
-Projekt: `poker-chips-28`. Realtime Database: `poker-chips-28-default-rtdb` in `europe-west1`. **Authentication → Anonym** muss aktiviert sein. Die konkrete Web-App-Konfiguration steht in `.env.production`. Das sind öffentliche Firebase-Webkennungen, keine Admin-Zugangsdaten; die Zugriffskontrolle übernehmen Authentication und `database.rules.json` ([Firebase-Dokumentation](https://firebase.google.com/docs/projects/api-keys)).
+Für den lokalen Mehrspieler-Modus die fünf Firebase-Webwerte in `.env.local` eintragen und `VITE_USE_EMULATORS=true` setzen. Die Vorlage steht in [.env.example](.env.example). Die Emulatoren starten mit:
 
 ```sh
-npx firebase login
-npx firebase deploy --only database --project poker-chips-28
-npm run build:pages
+npx firebase emulators:start --project demo-poker-chips --only auth,database
 ```
 
-`build:pages` baut für `/Poker-Chips-Online/`, erzwingt deaktivierte Emulatoren und erzeugt `404.html` für direkte Raum- und Einladungslinks. Fehlende Firebase-Werte brechen den Build ab. Eine lokale `.env.local` mit Emulatorwerten vor einem Produktionsbuild entfernen oder umbenennen.
+`npm run build:pages` erzeugt die veröffentlichbare App unter `/Poker-Chips-Online/` mit `404.html` für direkte Raumlinks. Dafür werden die Produktionswerte aus `.env.production` benötigt. `npm run deploy:rules` veröffentlicht **nur** die Datenbankregeln ins Firebase-Projekt `poker-chips-28`; die Website wird ausschließlich durch GitHub Actions veröffentlicht.
 
-Der Workflow `.github/workflows/pages.yml` prüft Engine und Multiplayer, baut die Website und veröffentlicht das geprüfte Build-Artefakt direkt mit `actions/deploy-pages`. Unter **Settings → Pages → Source** muss **GitHub Actions** ausgewählt sein. Jeder Push auf `main` veröffentlicht nach bestandenen Tests die neue Version; der bisherige `gh-pages`-Branch wird nicht mehr benötigt. Es sind keine GitHub-Secrets für die öffentlichen Firebase-Webkennungen erforderlich.
+## So funktioniert ein Tisch
 
-Die Datenbankregeln werden separat mit dem oben genannten Firebase-Befehl veröffentlicht. `firebase.json` enthält bewusst keine Functions-Konfiguration.
+Spieler melden sich anonym bei Firebase an. Ein Host erstellt einen automatisch erzeugten oder eigenen sechsstelligen Code und leitet die Runde, solange sein Browser geöffnet ist. Andere Spieler treten bei, erhalten einen Sitz und senden Befehle an eine geschützte Warteschlange. Der Host verarbeitet sie mit der gemeinsamen Engine in Datenbanktransaktionen. Er bestätigt die Gewinner der echten Karten und die Pot-Auszahlung. Blind-, Zug- und Präsenzdaten liegen im Raum; Wiederholungen und veraltete Befehle werden abgefangen.
 
-## Versionen und Updates
+Das ist eine Vertrauensrunde: Die [Datenbankregeln](database.rules.json) sperren direkte Spielstandänderungen von Gästen, können aber einen absichtlich manipulierten Host-Client nicht neutralisieren. Ohne aktiven Host pausiert die Verarbeitung. Die anonyme Firebase-Identität bleibt in den Websitedaten des Geräts. Das Löschen dieser Daten kann die Host-Identität und lokale Runden entfernen.
 
-`releases.json` ist die einzige inhaltliche Quelle für Version und deutsche Änderungstexte. `release:prepare` aktualisiert daraus `package.json` und `package-lock.json`; `release:check` und der Pages-Build verhindern Abweichungen. Aus dem neuesten Eintrag entstehen `version.json`, UI-Version und der versionsgebundene Service-Worker-Cache. Die Git-Historie wurde in der App rückwirkend von v0.0.1 bis v0.0.7 rekonstruiert; v0.0.8 war die Safari- und Update-Überarbeitung, v0.0.9 erweitert den Spielabend in drei Phasen. Der schon veröffentlichte Tag v0.0.1 bleibt unverändert und verweist historisch auf einen späteren Entwicklungsstand.
+## Projektübersicht
 
-```sh
-npm run release:prepare -- 0.0.9 "Änderung für Spieler" "Weitere Änderung"
-npm run release:check
-npm test
-npm run test:multiplayer
-npm run build:pages
-```
+| Ort | Inhalt |
+| --- | --- |
+| `src/game/` | Poker-Engine, Blinds, Raumzustand und Abrechnung ohne Browser/Firebase |
+| `src/online/` | Firebase-Initialisierung, Auth, Presence und transaktionale Raumverarbeitung |
+| `src/device/` | Gerätespeicher, Profil, Einstellungen, Vorlagen und lokaler Tisch |
+| `src/updates/` | Versionsvergleich und kontrollierte PWA-Aktualisierung |
+| `src/views/`, `src/components/`, `src/styles/` | Seiten, wiederverwendbare Oberfläche und Design |
+| `shared/`, `releases.json` | gemeinsamer Versionsparser und deutsche Versionshistorie |
+| `scripts/`, `tests/`, `.github/workflows/` | Build-/Release-Prüfungen, Tests und Pages-Veröffentlichung |
 
-Das GitHub-Release wird erst nach erfolgreichem Deployment auf `main` erzeugt. Die Website prüft Updates nur beim Tippen auf die dezente Version unten auf der Startseite. Ein neuer Service Worker wartet auf die Zustimmung zum Neustart; während einer Hand erfolgt kein erzwungener Reload. `Was ist neu?` erscheint pro Gerät und Version einmal. Eine Erstinstallation zeigt nur den neuesten Eintrag, nach übersprungenen Versionen alle ungesehenen. Die Versionshistorie liegt unter **Einstellungen → Daten & App**. Weder Updates noch App-Cache-Verwaltung löschen den gespeicherten Namen, Firebase Auth oder Raumdaten.
+Details: [Architektur](docs/ARCHITECTURE.md) · [Tests](docs/TESTING.md) · [Veröffentlichung und Versionen](docs/RELEASING.md) · [Anleitung für Coding Agents](AGENTS.md).
 
-Die Einstellungen haben große mobile Kategorien für Darstellung, optionale Töne, Name und App-Daten. Der Spielername wird unter dem bisherigen lokalen Schlüssel `name` gespeichert; vorhandene Namen werden weiterverwendet.
+## Versionen
 
-## Drei neue Spielphasen ab v0.0.9
+Die sichtbaren Versionen zählen fortlaufend **v0.1, v0.2, … v0.10, v0.11**. `releases.json` ist die Quelle für Versionsnummer, Datum und deutsche Hinweise. npm verlangt drei Zahlenteile, deshalb entspricht v0.11 intern `0.11.0`; `version.json` enthält beide Formen, damit ältere Installationen das Update erkennen. Der Service-Worker-Cache und das GitHub Release verwenden v0.11. Bereits vorhandene v0.0.x-Tags werden nicht verschoben. Einzelheiten und die Zuordnung der historischen Commits stehen in [RELEASING.md](docs/RELEASING.md).
 
-1. **Tischführung:** Der Host kann Plätze auslosen, einen Tisch pausieren oder sperren und späten Einstieg zwischen Händen erlauben. Spieler können aussetzen und zweimal 30 Sekunden Zeitreserve nehmen. Handverlauf und Pot-Lupe zeigen Buchungen; die letzte Auszahlung lässt sich vor der nächsten Hand zurücknehmen.
-2. **Turnier und Cash:** Neben dem bisherigen Blind-Timer sind feste Blindpläne mit Pausen, Ante für alle oder Big-Blind-Ante, Chipfarben und Tischvorlagen auf diesem Gerät möglich. Rebuys und Add-ons werden nur zwischen Händen gebucht. Ein optionaler Euro-Buy-in erzeugt eine Cent-genaue Abrechnung mit Zahlungsvorschlägen; die App führt keine Zahlungen aus. Der Color-up-Hinweis betrifft nur physische Chips, digitale Stacks werden nicht gerundet.
-3. **Einladen und Rückblick:** QR-Code, Teilen und eine nur lesende TV-Ansicht helfen am Tisch. Der Host kann die Spielleitung an ein online anwesendes Mitglied übertragen, während kein Einsatz läuft. Auszahlungen speisen einen Abend-Rückblick mit größtem Pot, Gewinnerstatistik, Teilen und CSV-Export. Optionale Spielsignale lassen sich in den Einstellungen abschalten. Unter **Ohne Internet auf einem Gerät spielen** läuft eine lokale Runde ohne Firebase; dieser Spielstand bleibt im Browser dieses Geräts.
+Die App prüft im Hintergrund alle 15 Sekunden auf neue Versionen und zeigt den Hinweis nur außerhalb laufender Tische. Aktualisiert wird erst nach Tippen auf **Aktualisieren & neu starten**. Die Versionshistorie steht unter **Einstellungen → Daten & App**. Spielername, Einstellungen, Firebase Auth und lokale Runden werden bei einem App-Update nicht gelöscht.
 
-Die TV-Ansicht verwendet dieselbe anonyme Firebase-Identität wie der angemeldete Tisch. Sie ist für ein weiteres Fenster auf einem bereits beigetretenen Gerät gedacht; ein fremdes Gerät muss dem privaten Raum zuerst regulär beitreten. Tischvorlagen und lokale Runden liegen im Gerätespeicher. Ein Service-Worker-Update löscht sie nicht, das manuelle Löschen von Websitedaten dagegen schon.
+## Sicherheit und Betrieb
 
-## iPhone, Safari und PWA
+Die Firebase-Webkonfiguration in `.env.production` ist im Browser-Bundle sichtbar. Ihr API-Key ist kein Admin-Schlüssel; Auth und [Rules](database.rules.json) schützen die Daten. Der Schlüssel ist im Google-Cloud-Projekt auf Firebase-bezogene APIs eingeschränkt, ohne aktive Cloud-Abrechnung. HTTP-Referrer-Beschränkungen sind derzeit nicht gesetzt; Missbrauch des kostenlosen Kontingents bleibt möglich. Das Verschieben in ein GitHub Secret würde den Schlüssel **nicht** aus dem ausgelieferten JavaScript entfernen. Änderungen an API-Beschränkungen, App Check oder Schlüsselrotation müssen mit iPhone/Safari und dem Pages-Build geprüft werden.
 
-Der Produktionsbuild verwendet `/Poker-Chips-Online/` als Vite- und Router-Basis und erzeugt `404.html` für direkte Raumlinks. Das PWA-Manifest, Start-URL, Scope und PNG-Icons zeigen auf denselben Pfad. Firebase wird auf der Startseite erst beim Erstellen oder Beitreten geladen. Geschützte Speicherzugriffe, Fallbacks für fehlendes `crypto.randomUUID` und `<dialog>` sowie ein statischer Start-/Fehlerbildschirm verhindern eine komplett weiße Seite bei optionalen Browserproblemen. Der Build zielt auf ES2018; WebKit-E2E prüft die ausgelieferte `dist`-Version. Das behebt nachweisbare Startfehler durch verweigertes `localStorage`; ohne Zugriff auf das betroffene iPhone lässt sich dessen ursprüngliche Ursache nicht eindeutig beweisen.
-
-## Firebase-Webschlüssel und Secret-Scanning
-
-Der in `.env.production` enthaltene Schlüssel ist ausschließlich der öffentliche Firebase-Browser-Schlüssel. Er ist im ausgelieferten JavaScript sichtbar und autorisiert keine Datenbank- oder Admin-Aktion. Die Rechte setzen Anonymous Auth und `database.rules.json` durch. Am 23.09.2026 wurde sein Google-Cloud-Eintrag geprüft: Er ist auf 27 Firebase-bezogene APIs beschränkt; die Generative Language API ist nicht freigegeben. HTTP-Referrer-Beschränkungen sind nicht gesetzt. Die Cloud-Billing-API meldet für das Projekt keine aktive Abrechnung. Das verbleibende Risiko betrifft missbräuchliche Nutzung des kostenlosen Kontingents und absichtlich manipulierende Hosts, nicht einen versteckten Admin-Schlüssel. Firebase App Check kann automatisierten Missbrauch verringern, muss aber vor einer Aktivierung mit Safari/PWA und allen Clients getestet werden.
-
-`.env.production` bleibt vorerst im Repository, damit das bestehende GitHub-Actions-Deployment reproduzierbar bleibt. `.env.example` enthält nur Platzhalter. Wer die Konfiguration aus dem Quellrepository entfernen möchte, muss zuerst die fünf `VITE_FIREBASE_*`-Werte als GitHub Actions Repository Variables oder Secrets einrichten und den Workflow entsprechend umstellen; ein Secret im Build versteckt den Browser-Schlüssel **nicht** im ausgelieferten JavaScript. Danach `.env.production` per Git entfernen und ignorieren. Bestehende Git-Historie und ausgelieferte Builds enthalten den Schlüssel weiterhin. Eine Rotation ist nur bei nicht erlaubten APIs, tatsächlichem Missbrauch oder geänderter Schlüsselstrategie sinnvoll und erfordert einen koordinierten Neubuild.
-
-## Spiel und Sicherheit
-
-- Räume werden atomar über sechsstellige Codes erstellt. Der Host kann einen Code vorgeben (z. B. `123456`) oder einen automatisch erzeugen lassen. Bereits belegte Codes werden abgewiesen, bestehende Tische niemals überschrieben. Spieler melden sich anonym an und treten per Code bei.
-- Spieler bekommen beim Beitritt automatisch einen freien Sitz. In der Lobby können sie auf einen freien Platz am runden Tisch wechseln. Die gleiche Sitzordnung bleibt im Spiel erhalten; Dealer, Small Blind, Big Blind und der aktive Spieler sind markiert.
-- Die Daten liegen unter `poker/v2`. Nur Mitglieder lesen den vollständigen Raum. Der jeweils eingetragene Host schreibt Mitgliedschaft, Einstellungen und Spielstand; Gäste schreiben eigene Anfragen und Presence. Ein Hostwechsel erfolgt atomar nur in der Lobby oder zwischen Händen.
-- Jede verarbeitete Anfrage hat eine `actionId`; Spielbefehle prüfen zusätzlich `expectedVersion`. Wiederholungen werden erkannt, konkurrierende Änderungen abgewiesen.
-- Jeder Zug hat 30 Sekunden Bedenkzeit. Die Frist liegt im gemeinsamen Spielstand und bleibt beim Neuladen erhalten. Der aktive Host verarbeitet abgelaufene Züge atomar als Fold; mehrere Host-Tabs können dieselbe Frist nicht doppelt ausführen. Bei einem pausierten Host erfolgt die Verarbeitung nach seiner Rückkehr. Gewinnerbestätigung und Kartenaufdecken haben keinen Zug-Timer.
-- Der Host darf Stack und Blinds in der Lobby ändern. Alle Spieler brauchen einen Sitz und müssen bereit sein.
-- Neue Tische starten mit einem einstellbaren Blind-Timer (Standard: 20 Minuten, Verdopplung). Möglich sind 1–180 Minuten, +50 % oder Verdopplung sowie feste Blinds ohne Timer. Bestehende Räume ohne Timer-Felder behalten ihre festen Blinds.
-- Der Countdown beginnt beim ersten Austeilen und verwendet die Firebase-Serverzeit. Ein abgelaufenes Level wird erst beim Vorbereiten bzw. Austeilen der nächsten Hand übernommen. Eine lange Hand überspringt keine Level; nach einer Erhöhung startet beim Austeilen wieder das volle Intervall. Neuladen oder Host-Wiederverbindung setzt den laufenden Countdown nicht zurück. Bruchteile von Chips werden bei +50 % aufgerundet; Blinds sind auf eine Milliarde Chips begrenzt.
-- Karten bleiben real. Dealer oder Host bestätigen Austeilen, Flop, Turn und River. Die Engine verarbeitet Check, Call, Bet, Raise, Fold und All-in sowie Side Pots und Split Pots.
-- Jede Auszahlung braucht die Bestätigung des Hosts. Ein Dialog öffnet sich automatisch am Ende der Hand, auch wenn alle bis auf einen Spieler gepasst haben. Der Host bestimmt die berechtigten Gewinner je Pot; mehrere Gewinner teilen ihn. Bereits abgezogene Einsätze werden dabei nicht doppelt belastet. Erst nach der Auszahlung ist die nächste Hand möglich; sie verschiebt den Dealer zum nächsten Spieler mit Chips.
-- Direkte Änderungen der Stacks, Übernahme der Hostrolle und gefälschte Anfragen durch Gäste sind durch Firebase Rules gesperrt. Bei Verbindungsverlust oder abwesendem Host pausiert die Oberfläche Aktionen.
+Firebase Authentication → **Anonym** und die aktuellen Realtime-Database-Rules müssen im Projekt `poker-chips-28` aktiv sein. Die Website benötigt kein Billing, keine Cloud Functions und kein Firebase Hosting. Automatisierte Tests benutzen ausschließlich `demo-poker-chips` in Emulatoren und verändern keine produktiven Räume.

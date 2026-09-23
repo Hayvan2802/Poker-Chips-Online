@@ -2,11 +2,11 @@
 import {computed, onMounted, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import releases from '../../releases.json'
-import {safeRead, safeWrite} from '../browser'
-import {playerName, savePlayerName} from '../profile'
-import {highContrast, reducedMotion, soundEnabled} from '../preferences'
-import {updateState, initUpdates, dismissUpdate, installUpdate} from '../updateManager'
-import {releasesSince} from '../updates'
+import {safeRead, safeWrite} from '../device/browser'
+import {playerName, savePlayerName} from '../device/profile'
+import {highContrast, reducedMotion, soundEnabled} from '../device/preferences'
+import {updateState, initUpdates, dismissUpdate, installUpdate} from '../updates/updateManager'
+import {releasesSince} from '../updates/updates'
 
 type Section = 'darstellung' | 'ton' | 'konto' | 'daten' | ''
 const route = useRoute(), router = useRouter()

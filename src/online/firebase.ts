@@ -2,9 +2,9 @@ import { initializeApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously, type User } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, onDisconnect, onValue, ref, remove, set, type DatabaseReference } from 'firebase/database'
 import { createRoom, serveRoom, submitRequest, transferHost } from './roomService'
-import { ROOM_ROOT, type RoomState } from './roomCore'
+import { ROOM_ROOT, type RoomState } from '../game/roomCore'
 import {firebaseConfig as config, firebaseConfigured, configurationError} from './firebaseConfig'
-import {actionId as newActionId} from './browser'
+import {actionId as newActionId} from '../device/browser'
 
 export {firebaseConfigured, configurationError, firebaseError} from './firebaseConfig'
 const app = firebaseConfigured ? initializeApp(config) : null

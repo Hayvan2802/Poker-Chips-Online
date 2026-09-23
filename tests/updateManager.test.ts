@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest'
-import {checkForUpdate, updateState} from '../src/updateManager'
+import {checkForUpdate, updateState} from '../src/updates/updateManager'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -13,7 +13,7 @@ it('can retry a manual version check after an offline failure', async () => {
   await checkForUpdate()
   expect(updateState.message).toContain('offline')
 
-  const fetchVersion = vi.fn().mockResolvedValue({ok: true, json: async () => ({version: '0.0.10'})})
+  const fetchVersion = vi.fn().mockResolvedValue({ok: true, json: async () => ({version: '0.11.0', label: '0.11'})})
   vi.stubGlobal('navigator', {onLine: true})
   vi.stubGlobal('fetch', fetchVersion)
   await checkForUpdate()

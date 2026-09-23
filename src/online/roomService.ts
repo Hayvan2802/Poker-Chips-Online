@@ -1,5 +1,5 @@
 import { onValue, ref, remove, runTransaction, serverTimestamp, set, type Database } from 'firebase/database'
-import { actionKey, applyRequest, applyTurnTimeout, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from './roomCore'
+import { actionKey, applyRequest, applyTurnTimeout, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from '../game/roomCore'
 
 async function generatedCode(uid: string, actionId: string, attempt: number) {
   const input = `${uid}:${actionId}:${attempt}`
