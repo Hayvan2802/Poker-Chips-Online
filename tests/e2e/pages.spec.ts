@@ -130,12 +130,14 @@ test('one-device table works offline and survives reload', async ({page,context}
   await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
   await page.reload()
   await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
-  await page.evaluate(()=>navigator.serviceWorker.ready)
-  await page.reload()
-  await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true)
-  if (context.browser()?.browserType().name()==='chromium') {
+  // The worker scope is covered in the separate PWA test on all engines.
+  // Chromium also verifies an offline reload of the persisted local game.
+  if (testInfo.project.name==='chromium') {
+    await page.evaluate(()=>navigator.serviceWorker.ready)
+    await page.reload({waitUntil:'domcontentloaded'})
+    await expect.poll(()=>page.evaluate(()=>!!navigator.serviceWorker.controller)).toBe(true)
     await context.setOffline(true)
-    await page.reload()
+    await page.reload({waitUntil:'domcontentloaded'})
     await expect(page.getByRole('heading',{name:'Hand beendet'})).toBeVisible()
   }
 })
