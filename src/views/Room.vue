@@ -15,10 +15,29 @@ let disposed = false, stopRoom: (() => void) | undefined
 let copyTimer: ReturnType<typeof setTimeout> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
 const updateOnline = () => { browserOnline.value = navigator.onLine }
+type WakeSentinel = {release: () => Promise<void>}
+let wake: WakeSentinel | null = null
+let wakePending = false
+async function keepHostAwake() {
+  const shouldKeep = !disposed && document.visibilityState === 'visible' && room.value?.status === 'playing' && room.value?.hostUid === uid.value
+  if (!shouldKeep) { if (wake) { const old = wake; wake = null; await old.release().catch(() => {}) }; return }
+  if (wake || wakePending) return
+  const supported = navigator as Navigator & {wakeLock?: {request: (type: 'screen') => Promise<WakeSentinel>}}
+  if (!supported.wakeLock) return
+  wakePending = true
+  try {
+    const acquired = await supported.wakeLock.request('screen')
+    if (disposed || document.visibilityState !== 'visible' || room.value?.status !== 'playing' || room.value?.hostUid !== uid.value) await acquired.release()
+    else wake = acquired
+  } catch { /* Safari may deny Wake Lock; the room still works. */ }
+  finally { wakePending = false }
+}
+const onVisibility = () => { void keepHostAwake() }
 onMounted(async () => {
   clockTimer = setInterval(() => { now.value = Date.now() + serverOffset.value }, 1000)
   addEventListener('online', updateOnline)
   addEventListener('offline', updateOnline)
+  document.addEventListener('visibilitychange', onVisibility)
   try {
     const stop = await watchRoom<RoomState>(id, {
       room: value => {
@@ -40,6 +59,8 @@ onUnmounted(() => {
   stopRoom?.()
   removeEventListener('online', updateOnline)
   removeEventListener('offline', updateOnline)
+  document.removeEventListener('visibilitychange', onVisibility)
+  void keepHostAwake()
   if (copyTimer) clearTimeout(copyTimer)
   if (clockTimer) clearInterval(clockTimer)
 })
@@ -49,6 +70,7 @@ const hostOnline = computed(() => !!room.value && (room.value.hostUid === uid.va
 const locked = computed(() => !online.value || !hostOnline.value || pending.value)
 const members = computed(() => Object.values(room.value?.members || {}))
 const me = computed(() => room.value?.members[uid.value])
+watch(() => [room.value?.status, room.value?.hostUid, uid.value], () => { void keepHostAwake() })
 const game = computed(() => room.value?.game)
 const players = computed(() => Object.values(game.value?.players || {}).sort((a, b) => a.seat - b.seat))
 const player = computed(() => game.value?.players[uid.value])
@@ -129,12 +151,14 @@ watch(() => JSON.stringify([game.value?.handId, pots.value]), () => {
 }, { immediate: true })
 const payoutReady = computed(() => pots.value.length > 0 && pots.value.every((_, index) => winners.value[index]?.length > 0))
 const winnerDialog = ref<HTMLDialogElement | null>(null)
+function openWinnerDialog() { const el = winnerDialog.value; if (!el || el.open) return; if (typeof el.showModal === 'function') el.showModal(); else { el.setAttribute('open', ''); el.classList.add('legacy-open') } }
+function closeWinnerDialog() { const el = winnerDialog.value; if (!el) return; if (typeof el.close === 'function') el.close(); else { el.removeAttribute('open'); el.classList.remove('legacy-open') } }
 const onlyOneLeft = computed(() => players.value.filter(p => !p.folded).length === 1)
 watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () => {
   await nextTick()
   if (game.value?.phase === 'showdown' && me.value?.host) {
-    if (winnerDialog.value && !winnerDialog.value.open) winnerDialog.value.showModal()
-  } else winnerDialog.value?.close()
+    openWinnerDialog()
+  } else closeWinnerDialog()
 }, {flush: 'post'})
 </script>
 
@@ -214,7 +238,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
       </div>
       <div v-if="game.phase === 'showdown'" class="panel showdown-panel">
         <h2>Die Hand wartet auf den Host</h2><p>{{onlyOneLeft ? 'Alle anderen Spieler haben gepasst. Der Host bestätigt jetzt die Auszahlung.' : 'Vergleicht eure Karten. Der Host wählt die Gewinner und verteilt den Pot.'}}</p>
-        <button v-if="me?.host" class="primary control-button" @click="winnerDialog?.showModal()">Gewinner bestätigen</button>
+        <button v-if="me?.host" class="primary control-button" @click="openWinnerDialog()">Gewinner bestätigen</button>
       </div>
       <dialog ref="winnerDialog" class="winner-dialog" aria-labelledby="winner-heading" aria-describedby="winner-description">
         <div class="winner-dialog-head"><span class="winner-emblem" aria-hidden="true">♠</span><div><small>HOST · HAND {{game.handId}}</small><h2 id="winner-heading">Wer gewinnt die Hand?</h2></div></div>
@@ -230,7 +254,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
         </div>
         <p class="field-hint">Die Einsätze sind bereits vom Stack abgezogen. Jetzt wird der Pot den Gewinnern gutgeschrieben.</p>
         <p v-if="error" class="error" role="alert">{{error}}</p><p v-if="!online" class="error" role="status">Verbindung wird wiederhergestellt. Bitte kurz warten.</p>
-        <div class="winner-dialog-actions"><button class="primary control-button" :disabled="locked || !payoutReady" @click="send('payout', {winners})">{{pending ? 'Wird ausgezahlt …' : 'Gewinn bestätigen & Chips auszahlen'}}</button><button class="dialog-later" :disabled="pending" @click="winnerDialog?.close()">Zurück zum Tisch</button></div>
+        <div class="winner-dialog-actions"><button class="primary control-button" :disabled="locked || !payoutReady" @click="send('payout', {winners})">{{pending ? 'Wird ausgezahlt …' : 'Gewinn bestätigen & Chips auszahlen'}}</button><button class="dialog-later" :disabled="pending" @click="closeWinnerDialog()">Zurück zum Tisch</button></div>
       </dialog>
       <div v-if="game.phase === 'settled'" class="panel dealer-panel">
         <h2>Hand beendet</h2><p>Die Chips wurden ausgezahlt.</p>

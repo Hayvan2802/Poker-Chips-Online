@@ -1,13 +1,23 @@
 import { onValue, ref, remove, runTransaction, serverTimestamp, set, type Database } from 'firebase/database'
 import { actionKey, applyRequest, applyTurnTimeout, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from './roomCore'
 
+async function generatedCode(uid: string, actionId: string, attempt: number) {
+  const input = `${uid}:${actionId}:${attempt}`
+  if (typeof crypto !== 'undefined' && crypto.subtle?.digest) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+    return String(100000 + new DataView(digest).getUint32(0) % 900000)
+  }
+  // Stable fallback keeps retried create commands idempotent on older WebKit.
+  let hash = 2166136261
+  for (let i = 0; i < input.length; i++) hash = Math.imul(hash ^ input.charCodeAt(i), 16777619) >>> 0
+  return String(100000 + hash % 900000)
+}
 export async function createRoom(db: Database, uid: string, name: string, actionId: string, requestedCode?: string) {
   cleanName(name); actionKey(actionId)
   if (requestedCode) roomCode(requestedCode)
   await waitForConnection(db)
   for (let attempt = 0; attempt < 12; attempt++) {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${uid}:${actionId}:${attempt}`))
-    const code = requestedCode || String(100000 + new DataView(digest).getUint32(0) % 900000)
+    const code = requestedCode || await generatedCode(uid, actionId, attempt)
     try {
       const tx = await runTransaction(ref(db, `${ROOM_ROOT}/rooms/${code}`), current => {
         if (current) return current.hostUid === uid && current.creationAction === actionId ? current : undefined

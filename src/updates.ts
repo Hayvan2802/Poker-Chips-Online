@@ -4,6 +4,6 @@ export function isNewerVersion(candidate: string, current: string) {
   for (let i=0; i<3; i++) if (next[i] !== previous[i]) return next[i] > previous[i]
   return false
 }
-export function isPokerCache(name: string, scope: string) {
-  return name.startsWith('poker-chips-') || (name.startsWith('workbox-') && name.includes(scope))
+export function releasesSince<T extends {version: string}>(releases: T[], seen: string | null): T[] {
+  return seen ? releases.filter(item => isNewerVersion(item.version, seen)) : releases.slice(0, 1)
 }

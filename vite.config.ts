@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import releases from './releases.json'
 import packageInfo from './package.json'
+import lockInfo from './package-lock.json'
 
 const runtime = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } }
 const base = runtime.process?.env?.GITHUB_PAGES ? '/Poker-Chips-Online/' : '/'
@@ -11,7 +12,7 @@ export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, '.', 'VITE_')
   const required = ['API_KEY', 'AUTH_DOMAIN', 'DATABASE_URL', 'PROJECT_ID', 'APP_ID']
   if (command === 'build') {
-    if (packageInfo.version !== releases[0].version) throw Error('Paketversion und neuester Release müssen übereinstimmen.')
+    if (packageInfo.version !== releases[0].version || lockInfo.version !== releases[0].version || lockInfo.packages[''].version !== releases[0].version) throw Error('Release, Paket und Lockdatei müssen dieselbe Version haben.')
     const missing = required.filter(key => !(runtime.process?.env?.[`VITE_FIREBASE_${key}`] || env[`VITE_FIREBASE_${key}`])?.trim())
     if (missing.length) throw new Error(`Firebase-Konfiguration fehlt: ${missing.map(key => `VITE_FIREBASE_${key}`).join(', ')}`)
     const emulators = runtime.process?.env?.VITE_USE_EMULATORS ?? env.VITE_USE_EMULATORS
@@ -19,6 +20,7 @@ export default defineConfig(({ command, mode }) => {
   }
   return {
   base,
+  build: {target: 'es2018'},
   plugins: [
     {
       name: 'release-metadata',
@@ -33,17 +35,19 @@ export default defineConfig(({ command, mode }) => {
     vue(),
     VitePWA({
       registerType: 'prompt',
+      injectRegister: null,
       manifest: {
         name: 'Poker Chips',
         short_name: 'Poker Chips',
+        lang: 'de',
         theme_color: '#07121d',
         background_color: '#07121d',
         display: 'standalone',
         start_url: base,
         scope: base,
-        icons: [{ src: `${base}icon.svg`, sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' }],
+        icons: [{ src: `${base}icon-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any maskable' }, {src: `${base}icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable'}],
       },
-      workbox: { navigateFallback: `${base}index.html`, cacheId: 'poker-chips', cleanupOutdatedCaches: true, globIgnores: ['**/version.json'] },
+      workbox: { navigateFallback: `${base}index.html`, cacheId: `poker-chips-v${releases[0].version}`, cleanupOutdatedCaches: true, skipWaiting: false, clientsClaim: false, globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'], globIgnores: ['**/version.json'] },
     }),
   ],
   }

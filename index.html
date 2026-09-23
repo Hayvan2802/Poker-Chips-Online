@@ -4,7 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
     <meta name="theme-color" content="#07121d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Poker Chips">
+    <meta name="description" content="Digitale Chips für einen echten Pokerabend">
+    <link rel="apple-touch-icon" href="%BASE_URL%icon-192.png">
     <title>Poker Chips</title>
+    <style>
+      html,body{margin:0;min-height:100%;background:#07121d;color:#eff8f5;font-family:system-ui,sans-serif}
+      #boot-shell{min-height:100vh;display:grid;place-items:center;text-align:center;padding:24px;box-sizing:border-box}
+      #boot-shell strong{font-size:25px}#boot-shell p{color:#a4b9c2;line-height:1.6}
+      #boot-error{display:none;position:fixed;inset:0;z-index:9999;background:#07121d;color:#edf7f3;padding:10vh 24px;text-align:center;box-sizing:border-box}
+      #boot-error button{background:#1ba88c;color:white;border:0;border-radius:12px;padding:14px 22px;font:700 15px system-ui}
+    </style>
+    <script>
+      (function(){
+        function showBootError(){
+          if(document.documentElement.dataset.appMounted) return;
+          var error=document.getElementById('boot-error');
+          if(error) error.style.display='block';
+        }
+        window.addEventListener('error',showBootError,true);
+        window.addEventListener('unhandledrejection',showBootError);
+        setTimeout(showBootError,15000);
+      })();
+    </script>
   </head>
-  <body><div id="app"></div><script type="module" src="/src/main.ts"></script></body>
+  <body>
+    <div id="app"><div id="boot-shell"><div><strong>Poker Chips</strong><p>Der Pokertisch wird geladen …</p></div></div></div>
+    <div id="boot-error" role="alert"><h1>Poker Chips konnte nicht starten</h1><p>Bitte prüfe die Verbindung und lade die Seite erneut. Dein Spielername und deine Identität bleiben gespeichert.</p><button onclick="location.reload()">Erneut laden</button></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

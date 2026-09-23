@@ -2,14 +2,16 @@ name: Publish Poker Chips
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: github-pages
-  cancel-in-progress: false
+  group: poker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -25,15 +27,20 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci
+      - run: npm run release:check
       - run: npm test
       - run: npm run test:multiplayer
       - run: npm run build:pages
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
       - uses: actions/upload-pages-artifact@v4
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
@@ -57,10 +64,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          version=$(node -p "require('./package.json').version")
+          version=$(node -p "require('./releases.json')[0].version")
           if gh release view "v$version" > /dev/null 2>&1; then
-            echo "Release v$version already exists."
+            existing=$(gh release view "v$version" --json targetCommitish --jq '.targetCommitish')
+            if [ "$existing" != "$GITHUB_SHA" ]; then
+              echo "Release v$version belongs to another commit."
+              exit 1
+            fi
+            echo "Matching release v$version already exists."
             exit 0
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null 2>&1; then
+            echo "Tag v$version already exists without a matching release."
+            exit 1
           fi
           node --input-type=module -e 'import fs from "node:fs"; const r=JSON.parse(fs.readFileSync("releases.json","utf8"))[0]; fs.writeFileSync("release-notes.md",r.title+"\n\n"+r.changes.map(x=>"- "+x).join("\n")+"\n");'
           gh release create "v$version" --target "$GITHUB_SHA" --title "Poker Chips v$version" --notes-file release-notes.md

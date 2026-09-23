@@ -58,17 +58,29 @@ Die Datenbankregeln werden separat mit dem oben genannten Firebase-Befehl veröf
 
 ## Versionen und Updates
 
-Die nummerierte Release-Historie beginnt mit **v0.0.1**. Frühere Veröffentlichungen sind Git-Commits ohne nachträglich erfundene Release-Nummern. `releases.json` enthält die deutschen Versionshinweise; `package.json` und die Lockdatei tragen dieselbe Version. Der Build prüft deren Übereinstimmung und erzeugt eine nicht offline zwischengespeicherte `version.json`.
-
-Für jede weitere sichtbare Veröffentlichung die Version erhöhen:
+`releases.json` ist die einzige inhaltliche Quelle für Version und deutsche Änderungstexte. `release:prepare` aktualisiert daraus `package.json` und `package-lock.json`; `release:check` und der Pages-Build verhindern Abweichungen. Aus dem neuesten Eintrag entstehen `version.json`, UI-Version und der versionsgebundene Service-Worker-Cache. Die Git-Historie wurde in der App rückwirkend von v0.0.1 bis v0.0.7 rekonstruiert; v0.0.8 ist diese Überarbeitung. Der schon veröffentlichte Tag v0.0.1 bleibt unverändert und verweist historisch auf einen späteren Entwicklungsstand.
 
 ```sh
-npm run release:prepare -- 0.0.2 "Erste Änderung" "Weitere Änderung"
+npm run release:prepare -- 0.0.9 "Änderung für Spieler" "Weitere Änderung"
+npm run release:check
+npm test
+npm run test:multiplayer
+npm run build:pages
 ```
 
-Nach erfolgreichem Test, Build und Pages-Deployment legt der Workflow das GitHub-Release samt Tag und Versionshinweisen an. Bestehende Tags werden nicht verändert. Im Einstellungsdialog gibt es die installierte Version, die Versionshistorie, eine manuelle Update-Prüfung und „Aktualisieren & neu starten“. Die App prüft zusätzlich bei Fokus und einmal pro Minute im Vordergrund. Sie lädt während einer Hand niemals eigenständig neu.
+Das GitHub-Release wird erst nach erfolgreichem Deployment auf `main` erzeugt. Die Website prüft Updates nur beim Tippen auf die dezente Version unten auf der Startseite. Ein neuer Service Worker wartet auf die Zustimmung zum Neustart; während einer Hand erfolgt kein erzwungener Reload. `Was ist neu?` erscheint pro Gerät und Version einmal. Eine Erstinstallation zeigt nur den neuesten Eintrag, nach übersprungenen Versionen alle ungesehenen. Die Versionshistorie liegt unter **Einstellungen → Daten & App**. Weder Updates noch App-Cache-Verwaltung löschen den gespeicherten Namen, Firebase Auth oder Raumdaten.
 
-„App-Cache leeren & neu starten“ entfernt ausschließlich Poker-Chips-App-Dateien und den Service Worker dieses App-Pfads. Firebase-Daten in IndexedDB und der lokale Name bleiben erhalten. Zum Reparieren wird zuerst geprüft, ob die Website erreichbar ist; offline wird der Cache beibehalten.
+Die Einstellungen haben große mobile Kategorien für Darstellung, Name und App-Daten. Der Spielername wird unter dem bisherigen lokalen Schlüssel `name` gespeichert; vorhandene Namen werden weiterverwendet.
+
+## iPhone, Safari und PWA
+
+Der Produktionsbuild verwendet `/Poker-Chips-Online/` als Vite- und Router-Basis und erzeugt `404.html` für direkte Raumlinks. Das PWA-Manifest, Start-URL, Scope und PNG-Icons zeigen auf denselben Pfad. Firebase wird auf der Startseite erst beim Erstellen oder Beitreten geladen. Geschützte Speicherzugriffe, Fallbacks für fehlendes `crypto.randomUUID` und `<dialog>` sowie ein statischer Start-/Fehlerbildschirm verhindern eine komplett weiße Seite bei optionalen Browserproblemen. Der Build zielt auf ES2018; WebKit-E2E prüft die ausgelieferte `dist`-Version. Das behebt nachweisbare Startfehler durch verweigertes `localStorage`; ohne Zugriff auf das betroffene iPhone lässt sich dessen ursprüngliche Ursache nicht eindeutig beweisen.
+
+## Firebase-Webschlüssel und Secret-Scanning
+
+Der in `.env.production` enthaltene Schlüssel ist ausschließlich der öffentliche Firebase-Browser-Schlüssel. Er ist im ausgelieferten JavaScript sichtbar und autorisiert keine Datenbank- oder Admin-Aktion. Die Rechte setzen Anonymous Auth und `database.rules.json` durch. Am 23.09.2026 wurde sein Google-Cloud-Eintrag geprüft: Er ist auf 27 Firebase-bezogene APIs beschränkt; die Generative Language API ist nicht freigegeben. HTTP-Referrer-Beschränkungen sind nicht gesetzt. Die Cloud-Billing-API meldet für das Projekt keine aktive Abrechnung. Das verbleibende Risiko betrifft missbräuchliche Nutzung des kostenlosen Kontingents und absichtlich manipulierende Hosts, nicht einen versteckten Admin-Schlüssel. Firebase App Check kann automatisierten Missbrauch verringern, muss aber vor einer Aktivierung mit Safari/PWA und allen Clients getestet werden.
+
+`.env.production` bleibt vorerst im Repository, damit das bestehende GitHub-Actions-Deployment reproduzierbar bleibt. `.env.example` enthält nur Platzhalter. Wer die Konfiguration aus dem Quellrepository entfernen möchte, muss zuerst die fünf `VITE_FIREBASE_*`-Werte als GitHub Actions Repository Variables oder Secrets einrichten und den Workflow entsprechend umstellen; ein Secret im Build versteckt den Browser-Schlüssel **nicht** im ausgelieferten JavaScript. Danach `.env.production` per Git entfernen und ignorieren. Bestehende Git-Historie und ausgelieferte Builds enthalten den Schlüssel weiterhin. Eine Rotation ist nur bei nicht erlaubten APIs, tatsächlichem Missbrauch oder geänderter Schlüsselstrategie sinnvoll und erfordert einen koordinierten Neubuild.
 
 ## Spiel und Sicherheit
 

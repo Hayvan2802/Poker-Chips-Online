@@ -2,6 +2,7 @@ import {spawnSync} from 'node:child_process'
 import {copyFileSync} from 'node:fs'
 
 for (const [script, args] of [
+  ['scripts/check-release.mjs', []],
   ['node_modules/vue-tsc/bin/vue-tsc.js', ['--noEmit']],
   ['node_modules/vite/bin/vite.js', ['build']],
 ]) {
@@ -12,3 +13,6 @@ for (const [script, args] of [
   if (result.status !== 0) process.exit(result.status ?? 1)
 }
 copyFileSync('dist/index.html', 'dist/404.html')
+
+const checked = spawnSync(process.execPath, ['scripts/check-release.mjs', '--dist'], {stdio:'inherit'})
+if (checked.status !== 0) process.exit(checked.status ?? 1)

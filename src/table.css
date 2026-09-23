@@ -262,3 +262,71 @@
   .winner-card>span:last-child { font-size: 9px; }
   .table-center .pot-chip { font-size: 25px; }
 }
+
+/* Mobile-first settings and release views */
+.app-settings-button {min-height:44px;padding:9px 14px;font-size:13px;font-weight:700;background:#182b40;border-color:#36516a}
+.app-settings-button>span:first-child {font-size:19px;color:#80dcc4}
+.hero {min-height:calc(100vh - 76px);display:flex;flex-direction:column;align-items:center}
+.hero>.eyebrow,.hero>h1,.hero>p {width:100%}
+.home-version-wrap {margin-top:auto;padding-top:35px;min-height:92px}
+.home-version {padding:8px 14px;background:transparent;color:#829fae;font-size:12px;min-height:40px;letter-spacing:.04em}
+.home-version:hover,.home-version:focus-visible {color:#b7f4df}
+.refresh-spin {display:inline-block;font-size:18px;line-height:0;vertical-align:middle;animation:version-spin .75s linear infinite}
+@keyframes version-spin {to{transform:rotate(360deg)}}
+.version-message {margin:0;color:#a8e4c7;font-size:12px;line-height:1.4}
+.settings-screen {position:fixed;inset:0;z-index:30;overflow-y:auto;overscroll-behavior:contain;background:radial-gradient(circle at 50% -10%,#1c3b5a 0,#0c192b 40%,#091424 100%);color:#edf5fa;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.settings-page {width:min(680px,100%);margin:auto;padding:18px 20px 42px}
+.settings-topbar {display:flex;align-items:center;justify-content:space-between;min-height:56px}
+.back-button {background:#1b3047;border:1px solid #38536a;border-radius:13px;min-height:44px;padding:8px 15px;font-weight:700;font-size:14px;color:#eff7fa}
+.settings-brand {font-size:10px;letter-spacing:.18em;color:#7fa3ba;font-weight:800}
+.settings-intro {padding:35px 6px 25px}
+.settings-intro p,.modal-kicker {font-size:10px;font-weight:800;letter-spacing:.2em;color:#7ce4ca}
+.settings-intro h1 {font-size:clamp(36px,7vw,52px);letter-spacing:-.05em;line-height:1.08;margin:11px 0 12px}
+.settings-intro>span {color:#a4b8c8;font-size:14px;line-height:1.5}
+.settings-categories {display:grid;gap:12px}
+.settings-category {border:1px solid #344a64;background:#14253a;border-radius:20px;overflow:hidden;box-shadow:0 14px 30px #03101c35}
+.category-head {width:100%;display:flex;align-items:center;gap:16px;text-align:left;min-height:82px;padding:15px 18px;background:transparent}
+.category-head>span:nth-child(2) {flex:1}
+.category-head strong {display:block;font-size:17px;letter-spacing:-.02em}
+.category-head small {display:block;margin-top:5px;color:#95aec1;font-size:11px;letter-spacing:0;font-weight:400}
+.category-icon {width:42px;height:42px;border-radius:13px;background:#203d51;border:1px solid #3a6071;display:grid;place-items:center;color:#8ce6ca;font-size:22px;flex:none}
+.category-chevron {font-size:27px;line-height:1;color:#8eacb9;transition:transform .2s}
+.category-chevron.open {transform:rotate(180deg)}
+.category-body {border-top:1px solid #30485e;padding:7px 20px 20px}
+.setting-toggle {display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:68px;border-bottom:1px solid #ffffff12;cursor:pointer}
+.setting-toggle:last-child {border-bottom:0}
+.setting-toggle strong,.category-link strong {display:block;font-size:14px;color:#edf5fa}
+.setting-toggle small,.category-link small {display:block;margin-top:5px;font-size:11px;font-weight:400;letter-spacing:0;color:#9bb2c3}
+.setting-toggle input {appearance:none;flex:none;width:44px;height:26px;padding:0;border:1px solid #527082;border-radius:30px;background:#233b50;position:relative;cursor:pointer}
+.setting-toggle input:after {content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#adc4cc;transition:transform .2s}
+.setting-toggle input:checked {background:#148d77;border-color:#48cbb1}
+.setting-toggle input:checked:after {transform:translateX(18px);background:white}
+.settings-name {display:grid;margin-top:14px;gap:9px;color:#b5ced6;font-size:12px}
+.settings-name input {min-height:48px;font-size:16px}
+.setting-help {color:#9cb2c2;font-size:11px;line-height:1.6}
+.category-link {width:100%;min-height:64px;padding:12px 2px;background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left}
+.category-link>span:last-child {font-size:24px;color:#86dcc5}
+.settings-about {padding-top:16px;border-top:1px solid #ffffff14;color:#7896aa;font-size:11px;line-height:1.7}
+.modal-overlay {position:fixed;inset:0;z-index:45;background:#020c17d9;display:flex;align-items:center;justify-content:center;padding:18px;backdrop-filter:blur(7px)}
+.release-card {position:relative;display:flex;flex-direction:column;width:min(540px,100%);max-height:calc(100dvh - 36px);background:#13273d;border:1px solid #45617a;border-radius:23px;padding:25px;box-shadow:0 28px 70px #000a;color:#edf5fa}
+.release-card h2 {margin:8px 36px 16px 0;font-size:25px;letter-spacing:-.03em}
+.release-scroll {overflow-y:auto;min-height:0;overscroll-behavior:contain;padding-right:6px}
+.release-entry {padding:14px 0;border-top:1px solid #ffffff1c}
+.release-entry>div {display:flex;justify-content:space-between;gap:14px;align-items:center}
+.release-entry strong {color:#89ebcc;font-size:14px}
+.release-entry time {color:#91aabe;font-size:11px}
+.release-entry h3 {font-size:14px;margin:8px 0}
+.release-entry ul {padding-left:19px;margin:6px 0;color:#c0d3d9;font-size:12px;line-height:1.7}
+.modal-close {position:absolute;right:18px;top:18px;width:38px;height:38px;border-radius:50%;background:#263f52;font-size:24px}
+.modal-primary,.modal-secondary {min-height:46px;border-radius:12px;padding:12px 20px;font-weight:800;font-size:13px}
+.modal-primary {background:#22ad90;color:#092b28;margin-top:18px}
+.modal-secondary {background:#284356;color:#e7f4f5}
+.modal-actions {display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+.modal-actions .modal-primary {margin-top:0}
+.update-card p {color:#b7cbd5;font-size:13px;line-height:1.7}
+.reduce-motion *, .reduce-motion *::before, .reduce-motion *::after {animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+.high-contrast .setting-help,.high-contrast .category-head small,.high-contrast .field-hint {color:#e4f4f8}
+.high-contrast .settings-category,.high-contrast .join-card,.high-contrast .panel {border-color:#80b8c3}
+@media(max-width:700px){.hero{min-height:calc(100vh - 60px)}.settings-page{padding:10px 14px 32px}.settings-intro{padding:25px 6px 22px}.release-card{padding:20px}.modal-actions{flex-direction:column-reverse}.modal-actions button{width:100%}}
+
+.winner-dialog.legacy-open {position:fixed;inset:20px;margin:auto;z-index:50;overflow:auto}
