@@ -9,3 +9,5 @@ functions/lib/
 firebase-debug.log
 *-debug.log
 ui-debug.log
+test-results/
+playwright-report/
