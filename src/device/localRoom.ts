@@ -1,4 +1,4 @@
-import {applyRequest,applyTurnTimeout,newRoom,cleanName,type RoomState,type RoomRequest} from './roomCore'
+import {applyRequest,applyTurnTimeout,newRoom,cleanName,type RoomState,type RoomRequest} from '../game/roomCore'
 import {actionId} from './browser'
 
 const KEY='poker-chips-local-table-v1'

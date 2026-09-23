@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { auth, command, firebaseError, watchRoom } from '../firebase'
-import { buildPots, type Move, type Phase } from '../engine'
+import { auth, command, firebaseError, watchRoom } from '../online/firebase'
+import { buildPots, type Move, type Phase } from '../game/engine'
 import PokerTable from '../components/PokerTable.vue'
-import { blindCountdown, blindMinutes, blindMultiplier, raisedBlinds, validBlindPlan, validDenominations, type BlindSettings, type BlindStep } from '../blinds'
-import type { RoomState } from '../roomCore'
-import {cashSettlement} from '../settlement'
-import {readPresets, writePresets, type TablePreset} from '../presets'
+import { blindCountdown, blindMinutes, blindMultiplier, raisedBlinds, validBlindPlan, validDenominations, type BlindSettings, type BlindStep } from '../game/blinds'
+import type { RoomState } from '../game/roomCore'
+import {cashSettlement} from '../game/settlement'
+import {readPresets, writePresets, type TablePreset} from '../device/presets'
 import QRCode from 'qrcode'
-import {playCue} from '../sound'
-import {rememberRoom} from '../recentRoom'
+import {playCue} from '../device/sound'
+import {rememberRoom} from '../device/recentRoom'
 
 const id = String(useRoute().params.id)
 const roomLink = `${location.origin}${import.meta.env.BASE_URL}invite/${id}`

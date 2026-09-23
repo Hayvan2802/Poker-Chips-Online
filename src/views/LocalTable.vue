@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
-import {buildPots,type Move} from '../engine'
-import {blindCountdown} from '../blinds'
+import {buildPots,type Move} from '../game/engine'
+import {blindCountdown} from '../game/blinds'
 import PokerTable from '../components/PokerTable.vue'
-import {clearLocalRoom,createLocalRoom,localCommand,localTick,readLocalRoom} from '../localRoom'
+import {clearLocalRoom,createLocalRoom,localCommand,localTick,readLocalRoom} from '../device/localRoom'
 
 const room=ref(readLocalRoom()),names=ref(['Spieler 1','Spieler 2']),settings=ref({stack:10000,sb:50,bb:100,blindMinutes:20,blindMultiplier:2})
 const error=ref(''),now=ref(Date.now()),bet=ref(0),winner=ref<string[][]>([])

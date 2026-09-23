@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import {computed,onMounted,onUnmounted,ref} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
-import {watchRoom,firebaseError} from '../firebase'
-import {buildPots} from '../engine'
+import {watchRoom,firebaseError} from '../online/firebase'
+import {buildPots} from '../game/engine'
 import PokerTable from '../components/PokerTable.vue'
-import type {RoomState} from '../roomCore'
+import type {RoomState} from '../game/roomCore'
 const id=String(useRoute().params.id),router=useRouter()
 const room=ref<RoomState|null>(null),error=ref(''),connected=ref(false)
 let stop:(()=>void)|undefined,disposed=false

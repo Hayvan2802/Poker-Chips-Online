@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest'
-import {applyRequest,newRoom,type RoomState} from '../src/roomCore'
-import {createLocalRoom,localCommand} from '../src/localRoom'
+import {applyRequest,newRoom,type RoomState} from '../src/game/roomCore'
+import {createLocalRoom,localCommand} from '../src/device/localRoom'
 
 let seq=0
 const t=1_800_000_000_000

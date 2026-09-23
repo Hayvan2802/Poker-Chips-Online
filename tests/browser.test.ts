@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
-import {actionId, safeRead, safeWrite} from '../src/browser'
-import {forgetRecentRoom, readRecentRoom, rememberRoom} from '../src/recentRoom'
+import {actionId, safeRead, safeWrite} from '../src/device/browser'
+import {forgetRecentRoom, readRecentRoom, rememberRoom} from '../src/device/recentRoom'
 
 afterEach(() => vi.unstubAllGlobals())
 

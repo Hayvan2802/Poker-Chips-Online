@@ -3,8 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { initializeApp, deleteApp, type FirebaseApp } from 'firebase/app'
 import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, get, ref, set, onValue } from 'firebase/database'
-import { createRoom, serveRoom, submitRequest, transferHost } from '../src/roomService'
-import { ROOM_ROOT } from '../src/roomCore'
+import { createRoom, serveRoom, submitRequest, transferHost } from '../src/online/roomService'
+import { ROOM_ROOT } from '../src/game/roomCore'
 
 const apps: FirebaseApp[] = []
 const hosts = new Map<string, () => void>()
