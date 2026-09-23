@@ -41,7 +41,7 @@ Details: [Architektur](docs/ARCHITECTURE.md) · [Tests](docs/TESTING.md) · [Ver
 
 ## Versionen
 
-Die sichtbaren Versionen zählen fortlaufend **v0.1, v0.2, … v0.10, v0.11**. `releases.json` ist die Quelle für Versionsnummer, Datum und deutsche Hinweise. npm verlangt drei Zahlenteile, deshalb entspricht v0.11 intern `0.11.0`; `version.json` enthält beide Formen, damit ältere Installationen das Update erkennen. Der Service-Worker-Cache und das GitHub Release verwenden v0.11. Bereits vorhandene v0.0.x-Tags werden nicht verschoben. Einzelheiten und die Zuordnung der historischen Commits stehen in [RELEASING.md](docs/RELEASING.md).
+Die sichtbaren Versionen zählen fortlaufend **v0.1, v0.2, … v0.10, v0.11, v0.12**. `releases.json` ist die Quelle für Versionsnummer, Datum und deutsche Hinweise. npm verlangt drei Zahlenteile, deshalb entspricht v0.12 intern `0.12.0`; `version.json` enthält beide Formen, damit ältere Installationen das Update erkennen. Der Service-Worker-Cache und das GitHub Release verwenden v0.12. Bereits vorhandene v0.0.x-Tags wurden nicht verschoben; die korrekten v0.1–v0.10-Tags wurden zusätzlich angelegt. Einzelheiten und die Zuordnung der historischen Commits stehen in [RELEASING.md](docs/RELEASING.md).
 
 Die App prüft im Hintergrund alle 15 Sekunden auf neue Versionen und zeigt den Hinweis nur außerhalb laufender Tische. Aktualisiert wird erst nach Tippen auf **Aktualisieren & neu starten**. Die Versionshistorie steht unter **Einstellungen → Daten & App**. Spielername, Einstellungen, Firebase Auth und lokale Runden werden bei einem App-Update nicht gelöscht.
 

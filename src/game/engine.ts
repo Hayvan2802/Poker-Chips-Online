@@ -2,7 +2,7 @@ export const MAX_SEATS = 9
 export type Phase = 'waiting-deal'|'preflop'|'waiting-flop'|'flop'|'waiting-turn'|'turn'|'waiting-river'|'river'|'showdown'|'settled'
 export interface Player { uid:string; name:string; seat:number; stack:number; folded:boolean; allIn:boolean; roundBet:number; handBet:number; actedAtBet:number; sittingOut?:boolean }
 export interface Pot { amount:number; eligible:string[] }
-export interface Game { handId:number; dealer:number; sb:number; bb:number; ante?:number; anteMode?:'each'|'bb'; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean }
+export interface Game { handId:number; dealer:number; sb:number; bb:number; ante?:number; anteMode?:'each'|'bb'; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean; smallBlindSeat?:number; bigBlindSeat?:number }
 export type Move={kind:'fold'|'check'|'call'|'bet'|'raise'|'all-in';to?:number}
 
 const seated = (g:Game) => Object.values(g.players).sort((a,b)=>a.seat-b.seat)
@@ -12,6 +12,23 @@ export const next = (g:Game, seat:number, predicate=active) => {
   const ps=seated(g)
   for(let n=1;n<=MAX_SEATS;n++){const p=ps.find(x=>x.seat===(seat+n)%MAX_SEATS);if(p&&predicate(p))return p}
   return undefined
+}
+export function blindPositions(g:Game): {small?:number;big?:number} {
+  // Preserve the actual chips' positions until the hand is over, even if a player busts.
+  if (g.phase !== 'waiting-deal' && g.smallBlindSeat !== undefined && g.bigBlindSeat !== undefined) {
+    return {small:g.smallBlindSeat,big:g.bigBlindSeat}
+  }
+  const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
+  if(playing.length<2)return {}
+  const dealer=playing.find(p=>p.seat===g.dealer)??next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)
+  if(!dealer)return {}
+  const small=playing.length===2?dealer:next(g,dealer.seat,p=>p.stack>0&&!p.sittingOut)
+  const big=small&&next(g,small.seat,p=>p.stack>0&&!p.sittingOut)
+  return {small:small?.seat,big:big?.seat}
+}
+export function tableChampion(g:Game): Player | null {
+  if(g.phase!=='settled'||!g.paid||Object.keys(g.players).length<2)return null
+  return Object.values(g.players).find(p=>p.stack===g.totalChips)??null
 }
 export function assertChips(g:Game){
   const ps=seated(g)
@@ -49,6 +66,7 @@ export function deal(g:Game){
   if(!dealer){dealer=next(g,g.dealer,p=>p.stack>0&&!p.sittingOut);if(!dealer)throw Error('Dealer fehlt');g.dealer=dealer.seat}
   const heads=playing.length===2
   const small=heads?dealer:next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!;const big=next(g,small.seat,p=>p.stack>0&&!p.sittingOut)!
+  g.smallBlindSeat=small.seat;g.bigBlindSeat=big.seat
   if(g.ante){if(g.anteMode==='bb')commitDead(big,g.ante*playing.length);else for(const player of playing)commitDead(player,g.ante)}
   commit(small,g.sb);commit(big,g.bb)
   g.highestBet=Math.max(small.roundBet,big.roundBet);g.phase='preflop'
@@ -102,13 +120,19 @@ export function payout(g:Game,winners:string[][]){
     const order=seated(g).filter(p=>ws.includes(p.uid)&&p.seat>g.dealer).concat(seated(g).filter(p=>ws.includes(p.uid)&&p.seat<=g.dealer))
     for(let n=0;n<rest;n++)additions[order[n].uid]++
   })
-  for(const p of seated(g)){p.stack+=additions[p.uid]||0;p.handBet=0;p.roundBet=0}
+  for(const p of seated(g)){p.stack+=additions[p.uid]||0;p.handBet=0;p.roundBet=0;p.allIn=false}
   g.pots=pots;g.paid=true;g.phase='settled';g.turn=null;g.highestBet=0;assertChips(g);return g
 }
 export function nextHand(g:Game){
   if(g.phase!=='settled'||!g.paid)throw Error('Zuerst die aktuelle Hand abrechnen')
-  if(seated(g).filter(p=>p.stack>0&&!p.sittingOut).length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
-  g.dealer=next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!.seat;g.handId++;g.phase='waiting-deal';g.paid=false;g.turn=null;g.highestBet=0;g.minRaise=g.bb;g.pots=[]
+  const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
+  if(playing.length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
+  // At the 3+ → 2 transition, the previous big blind takes the button if still in.
+  // Otherwise that player would have to post the big blind in consecutive hands.
+  const transitioningToHeadsUp=playing.length===2&&g.smallBlindSeat!==undefined&&g.smallBlindSeat!==g.dealer
+  const previousBig=playing.find(p=>p.seat===g.bigBlindSeat)
+  g.dealer=transitioningToHeadsUp&&previousBig?previousBig.seat:next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!.seat
+  g.handId++;g.phase='waiting-deal';g.paid=false;g.turn=null;g.highestBet=0;g.minRaise=g.bb;g.pots=[]
   for(const p of seated(g)){p.folded=p.stack===0||!!p.sittingOut;p.allIn=false;p.roundBet=0;p.handBet=0;p.actedAtBet=-1}
   assertChips(g);return g
 }

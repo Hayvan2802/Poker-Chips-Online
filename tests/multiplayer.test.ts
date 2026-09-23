@@ -5,6 +5,7 @@ import { connectAuthEmulator, getAuth, signInAnonymously } from 'firebase/auth'
 import { connectDatabaseEmulator, getDatabase, get, ref, set, onValue } from 'firebase/database'
 import { createRoom, serveRoom, submitRequest, transferHost } from '../src/online/roomService'
 import { ROOM_ROOT } from '../src/game/roomCore'
+import {blindPositions, tableChampion} from '../src/game/engine'
 
 const apps: FirebaseApp[] = []
 const hosts = new Map<string, () => void>()
@@ -33,6 +34,32 @@ async function client(authenticate = true) {
 afterAll(async () => { for (const stop of hosts.values()) stop(); await Promise.all(apps.map(deleteApp)) })
 
 describe('Firebase Spark multiplayer integration', () => {
+  it('delivers the same heads-up roles and table champion to host and guest', async () => {
+    const [host, guest] = await Promise.all([client(), client()])
+    const {roomId} = await host.call('createRoom', {name:'Host', actionId:randomUUID()})
+    await guest.call('joinRoom', {name:'Guest', code:roomId, actionId:randomUUID()})
+    await host.command(roomId,'settings',{stack:20,sb:5,bb:10})
+    await host.command(roomId,'ready'); await guest.command(roomId,'ready')
+    await host.command(roomId,'start'); await host.command(roomId,'deal')
+    expect(blindPositions((await guest.room(roomId)).game)).toEqual({small:0,big:1})
+    await host.command(roomId,'act',{move:{kind:'all-in'}})
+    await guest.command(roomId,'act',{move:{kind:'call'}})
+    for(let card=0;card<3;card++) await host.command(roomId,'reveal')
+    await host.command(roomId,'payout',{winners:[[host.uid]]})
+    const observe = (db: typeof host.db) => new Promise<any>((resolve,reject) => {
+      const timeout = setTimeout(() => {stop(); reject(Error('Champion state was not delivered'))}, 5000)
+      let stop = () => {}
+      stop = onValue(ref(db,`${ROOM_ROOT}/rooms/${roomId}`), snapshot => {
+        const game = snapshot.val()?.game
+        if(game?.phase === 'settled') {clearTimeout(timeout); stop(); resolve(game)}
+      }, reject)
+    })
+    const [hostGame,guestGame] = await Promise.all([observe(host.db),observe(guest.db)])
+    expect(tableChampion(hostGame)?.uid).toBe(host.uid)
+    expect(tableChampion(guestGame)?.uid).toBe(host.uid)
+    expect(hostGame.players[host.uid!].stack).toBe(40)
+    expect(guestGame.players[guest.uid!].stack).toBe(0)
+  }, 30000)
   it('hands control to an online member without losing the room or identity',async()=>{
     const [host,guest]=await Promise.all([client(),client()])
     const {roomId}=await host.call('createRoom',{name:'Host',actionId:randomUUID()})
