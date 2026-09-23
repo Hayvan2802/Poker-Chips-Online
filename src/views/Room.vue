@@ -2,8 +2,9 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { auth, command, firebaseError, watchRoom } from '../online/firebase'
-import { buildPots, type Move, type Phase } from '../game/engine'
+import { blindPositions, buildPots, tableChampion, type Move, type Phase } from '../game/engine'
 import PokerTable from '../components/PokerTable.vue'
+import ChampionCelebration from '../components/ChampionCelebration.vue'
 import { blindCountdown, blindMinutes, blindMultiplier, raisedBlinds, validBlindPlan, validDenominations, type BlindSettings, type BlindStep } from '../game/blinds'
 import type { RoomState } from '../game/roomCore'
 import {cashSettlement} from '../game/settlement'
@@ -90,13 +91,8 @@ const canDeal = computed(() => me.value?.host || dealer.value?.uid === uid.value
 const canStart = computed(() => members.value.length >= 2 && members.value.every(m => m.seat != null && m.ready))
 const seatedMembers = computed(() => members.value.filter(m => m.seat != null).map(m => ({...m, seat: m.seat!})))
 const readyCount = computed(() => members.value.filter(m => m.ready).length)
-const blindSeats = computed(() => {
-  if (!game.value) return {small: undefined, big: undefined}
-  const playing = players.value.filter(p => !p.sittingOut && (p.stack + p.handBet > 0 || p.allIn))
-  const after = (seat: number) => playing.find(p => p.seat > seat) ?? playing[0]
-  const small = playing.length === 2 ? dealer.value : after(game.value.dealer)
-  return {small: small?.seat, big: small ? after(small.seat)?.seat : undefined}
-})
+const blindSeats = computed(() => game.value ? blindPositions(game.value) : {small:undefined,big:undefined})
+const champion = computed(() => game.value ? tableChampion(game.value) : null)
 const timerEnabled = computed(() => !!room.value && blindMinutes(room.value.settings) > 0)
 const nextStep = computed(() => room.value?.settings.blindPlan?.[room.value.blindClock?.level || 1])
 const nextBlinds = computed(() => game.value && room.value ? nextStep.value?.kind === 'level' ? {sb:nextStep.value.sb,bb:nextStep.value.bb} : nextStep.value?.kind === 'break' ? null : raisedBlinds(game.value.sb, game.value.bb, blindMultiplier(room.value.settings)) : null)
@@ -135,6 +131,16 @@ const phaseNames: Record<Phase, string> = {
 }
 const phaseName = computed(() => game.value ? phaseNames[game.value.phase] : '')
 const waitingReveal = computed(() => ['waiting-flop', 'waiting-turn', 'waiting-river'].includes(game.value?.phase || ''))
+const revealHelp: Partial<Record<Phase,string>> = {
+  'waiting-flop':'Lege die ersten drei Gemeinschaftskarten auf den Tisch: den Flop.',
+  'waiting-turn':'Lege die vierte Gemeinschaftskarte auf den Tisch: den Turn.',
+  'waiting-river':'Lege die fünfte Gemeinschaftskarte auf den Tisch: den River.',
+}
+const revealButton: Partial<Record<Phase,string>> = {
+  'waiting-flop':'Erste drei Karten liegen – weiter',
+  'waiting-turn':'Vierte Karte liegt – weiter',
+  'waiting-river':'Fünfte Karte liegt – weiter',
+}
 const activeName = computed(() => game.value?.turn ? game.value.players[game.value.turn]?.name : '')
 
 async function send(type: string, data: object = {}) {
@@ -301,14 +307,15 @@ function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',
         <span class="felt-eyebrow">{{phaseName}}</span><div class="center-chips" aria-hidden="true"><i></i><i></i><i></i></div><div :key="pot" class="pot-chip">{{pot.toLocaleString('de-DE')}}</div><strong class="felt-caption">IM POT</strong><p v-if="activeName">{{myTurn ? 'Du bist am Zug' : activeName + ' ist am Zug'}}</p>
         <span v-if="game.turn && turnSeconds !== null" class="turn-clock" :class="{urgent: turnSeconds <= 10}" role="timer" aria-label="Verbleibende Bedenkzeit">{{turnTime}}</span>
       </PokerTable>
+      <p v-if="blindSeats.small === game.dealer && blindSeats.big !== undefined" class="heads-up-note">Zu zweit: Der Dealer hat den Small Blind. Der Big Blind handelt ab dem Flop zuerst.</p>
       <details v-if="potDetails.length" class="panel pot-loupe"><summary>Pot-Lupe · {{potDetails.length}} {{potDetails.length === 1 ? 'Pot' : 'Pots'}} ansehen</summary><ol><li v-for="(currentPot, index) in potDetails" :key="index"><strong>{{index === 0 ? 'Hauptpot' : 'Nebenpot ' + index}}: {{currentPot.amount.toLocaleString('de-DE')}} Chips</strong><span>Gewinnen können: {{currentPot.eligible.map(playerUid => game?.players[playerUid]?.name || 'Spieler').join(', ')}}</span></li></ol><p>Gefoldete Einsätze bleiben im Pot, gefoldete Spieler können ihn nicht gewinnen.</p></details>
       <div v-if="['waiting-deal', 'settled'].includes(game.phase)" class="panel between-hands"><button v-if="player && player.stack > 0" :disabled="locked" @click="send('sitOut', {sittingOut: !player.sittingOut})">{{player.sittingOut ? 'Wieder mitspielen' : 'Nächste Hand aussetzen'}}</button><span v-if="player?.sittingOut">Du setzt aus und bekommst keine Karten oder Blinds. Zurückkehrende Spieler zahlen den Blind erst, wenn sie regulär an der Reihe sind.</span><div v-if="me?.host && game.phase === 'settled'" class="entry-policy"><button :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen === false, lateRegistration: !!room.lateRegistration})">{{room.joinOpen === false ? 'Tisch für neue Spieler öffnen' : 'Tisch für neue Spieler sperren'}}</button><button :disabled="locked" @click="send('entryPolicy', {joinOpen: room.joinOpen !== false, lateRegistration: !room.lateRegistration})">Später Einstieg: {{room.lateRegistration ? 'erlaubt' : 'aus'}}</button></div></div>
       <details v-if="me?.host && ['waiting-deal','settled'].includes(game.phase)" class="panel rebuy-panel"><summary>Rebuy / Add-on buchen</summary><p>Nur zwischen Händen. Der neue Chipbetrag wird dem Stack gutgeschrieben und bei der Abrechnung als zusätzliche Einzahlung erfasst.</p><div class="rebuy-controls"><select v-model="rebuyTarget" aria-label="Spieler für Rebuy"><option value="">Spieler wählen</option><option v-for="p in players" :key="p.uid" :value="p.uid">{{p.name}}</option></select><label>Chips<input v-model.number="rebuyChips" type="number" min="1" step="1"></label><button :disabled="locked || !rebuyTarget || !Number.isSafeInteger(rebuyChips) || rebuyChips<=0 || !!room.settings.buyInCents && !Number.isSafeInteger(rebuyChips*room.settings.buyInCents/room.settings.stack)" @click="send('rebuy',{targetUid:rebuyTarget,chips:rebuyChips})">{{room.settings.buyInCents ? `${money(rebuyChips*room.settings.buyInCents/room.settings.stack)} buchen` : 'Chips gutschreiben'}}</button></div></details>
       <details v-if="cash" class="panel cash-panel" :open="showCash" @toggle="showCash=($event.target as HTMLDetailsElement).open"><summary>Cash-Abrechnung & Zahlungen</summary><p>Verteilung der Einzahlungen nach aktuellem Chipstand. Nur an Handgrenzen verbindlich.</p><ul><li v-for="row in cash.rows" :key="row.uid"><strong>{{row.name}}</strong><span>{{row.chips.toLocaleString('de-DE')}} Chips · eingezahlt {{money(row.paidCents)}}</span><b>{{row.netCents>=0?'+':''}}{{money(row.netCents)}}</b></li></ul><h3>Zahlungsvorschlag</h3><ol><li v-for="(transfer,index) in cash.transfers" :key="index">{{game.players[transfer.from]?.name}} → {{game.players[transfer.to]?.name}}: {{money(transfer.cents)}}</li></ol><p v-if="!cash.transfers.length">Alle sind ausgeglichen.</p></details>
       <div v-if="game.phase === 'waiting-deal' || waitingReveal" class="panel dealer-panel">
         <h2>{{phaseName}}</h2>
-        <p>{{game.phase === 'waiting-deal' ? 'Der Dealer verteilt die echten Karten. Erst nach der Bestätigung werden die Blinds gebucht.' : 'Der Dealer legt die nächsten Gemeinschaftskarten auf den Tisch und bestätigt anschließend.'}}</p>
-        <button v-if="canDeal" class="primary control-button" :disabled="locked" @click="send(game.phase === 'waiting-deal' ? 'deal' : 'reveal')">{{game.phase === 'waiting-deal' ? 'Karten verteilt – Hand starten' : 'Karten aufgedeckt – weiter'}}</button>
+        <p>{{game.phase === 'waiting-deal' ? 'Der Dealer verteilt die echten Karten. Erst nach der Bestätigung werden die Blinds gebucht.' : revealHelp[game.phase]}}</p>
+        <button v-if="canDeal" class="primary control-button" :disabled="locked" @click="send(game.phase === 'waiting-deal' ? 'deal' : 'reveal')">{{game.phase === 'waiting-deal' ? 'Karten verteilt – Hand starten' : revealButton[game.phase]}}</button>
         <p v-else>Warte auf die Bestätigung von {{dealer?.name}} oder dem Host.</p>
       </div>
       <div v-if="game.phase === 'showdown'" class="panel showdown-panel">
@@ -355,4 +362,5 @@ function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',
       <details class="panel session-recap"><summary>Abend-Rückblick & Highlights</summary><div class="recap-stats"><div><span>HÄNDE</span><strong>{{room.session?.handsCompleted||0}}</strong></div><div><span>GRÖSSTER POT</span><strong>{{(room.session?.biggestPot||0).toLocaleString('de-DE')}}</strong></div></div><ol><li v-for="row in sessionRows" :key="row.uid"><strong>{{row.name}}</strong><span>{{row.hands}} Hände gewonnen · {{row.chips.toLocaleString('de-DE')}} Chips aus Pots</span></li></ol><div class="share-actions"><button @click="shareRecap">↗ Rückblick teilen</button><button @click="exportRecap">CSV exportieren</button></div><p>Der Rückblick zählt Auszahlungen seit Einführung der Statistik an diesem Tisch. Chips aus Pots sind Bruttogewinne, kein Nettoprofit.</p></details>
     </div>
   </section>
+  <ChampionCelebration :room-id="id" :hand-id="game?.handId || 0" :champion="champion" />
 </template>

@@ -41,6 +41,7 @@ function label(seat: number) {
           <span v-if="at(seat - 1)!.sittingOut" class="seat-status">Setzt aus</span>
           <span v-else-if="at(seat - 1)!.folded" class="seat-status">Gepasst</span>
           <span v-else-if="at(seat - 1)!.allIn" class="seat-status">All-in</span>
+          <span v-else-if="at(seat - 1)!.stack === 0" class="seat-status">Keine Chips</span>
           <span v-else-if="at(seat - 1)!.uid === turn" class="seat-status">Am Zug</span>
         </span>
         <span v-if="!lobby && at(seat - 1)!.roundBet" :key="at(seat - 1)!.roundBet" class="seat-bet" :aria-label="'Einsatz: ' + at(seat - 1)!.roundBet"><i aria-hidden="true"></i>{{at(seat - 1)!.roundBet?.toLocaleString('de-DE')}}</span>

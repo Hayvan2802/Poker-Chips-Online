@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest'
-import {createGame,deal,act,buildPots,payout,reveal,nextHand,assertChips} from '../src/game/engine'
+import {createGame,deal,act,buildPots,payout,reveal,nextHand,assertChips,blindPositions,tableChampion} from '../src/game/engine'
 const ps=[{uid:'a',name:'Ada',seat:0},{uid:'b',name:'Bo',seat:1},{uid:'c',name:'Cy',seat:2}]
 
 describe('Poker state machine',()=>{
@@ -17,12 +17,48 @@ describe('Poker state machine',()=>{
  })
  it('handles an entire heads-up checkdown, validated split payout, and dealer rotation',()=>{
   const g=deal(createGame(ps.slice(0,2),100,5,10,0));expect(g.turn).toBe('a');expect(g.players.a.roundBet).toBe(5)
+  expect(blindPositions(g)).toEqual({small:0,big:1})
   act(g,'a',{kind:'call'});act(g,'b',{kind:'check'})
   for(let street=0;street<3;street++){reveal(g);expect(g.turn).toBe('b');act(g,'b',{kind:'check'});act(g,'a',{kind:'check'})}
   expect(g.phase).toBe('showdown');const before=JSON.stringify(g)
   expect(()=>payout(g,[['a','a']])).toThrow();expect(JSON.stringify(g)).toBe(before)
   payout(g,[['a','b']]);expect(g.players.a.stack).toBe(100);expect(g.players.b.stack).toBe(100)
   expect(()=>payout(g,[['a']])).toThrow();nextHand(g);expect(g.handId).toBe(2);expect(g.dealer).toBe(1);expect(g.phase).toBe('waiting-deal')
+  deal(g);expect(blindPositions(g)).toEqual({small:1,big:0});expect(g.turn).toBe('b')
+ })
+ it('does not assign the previous big blind twice when three players become two',()=>{
+  const g=deal(createGame(ps,100,5,10,0))
+  expect(blindPositions(g)).toEqual({small:1,big:2})
+  g.phase='settled';g.paid=true
+  g.players.a.stack=0;g.players.b.stack=140;g.players.c.stack=160
+  for(const p of Object.values(g.players)){p.handBet=0;p.roundBet=0}
+  assertChips(g)
+  // The markers still describe the completed hand until the next one is prepared.
+  expect(blindPositions(g)).toEqual({small:1,big:2})
+  nextHand(g);expect(g.dealer).toBe(2)
+  deal(g);expect(blindPositions(g)).toEqual({small:2,big:1})
+  expect(g.players.b.roundBet).toBe(10);expect(g.players.c.roundBet).toBe(5)
+  assertChips(g)
+ })
+ it('moves the button correctly when the previous small or big blind leaves',()=>{
+  for(const [eliminated,expectedDealer] of [['b',2],['c',1]] as const){
+    const g=deal(createGame(ps,100,5,10,0))
+    g.phase='settled';g.paid=true
+    for(const p of Object.values(g.players)){p.handBet=0;p.roundBet=0;p.stack=p.uid===eliminated?0:150}
+    assertChips(g);nextHand(g);expect(g.dealer).toBe(expectedDealer)
+    deal(g);expect(blindPositions(g).small).toBe(expectedDealer)
+    assertChips(g)
+  }
+ })
+ it('announces a table champion only after all chips have been paid',()=>{
+  const g=deal(createGame(ps.slice(0,2),100,5,10,0))
+  expect(tableChampion(g)).toBeNull()
+  act(g,'a',{kind:'all-in'});act(g,'b',{kind:'call'})
+  reveal(g);reveal(g);reveal(g)
+  expect(tableChampion(g)).toBeNull()
+  payout(g,[['a']]);expect(tableChampion(g)?.uid).toBe('a')
+  expect(Object.values(g.players).every(p=>!p.allIn)).toBe(true)
+  assertChips(g)
  })
  it('creates side pots and pays odd chips clockwise',()=>{
   const g=createGame(ps,100,5,10,0)

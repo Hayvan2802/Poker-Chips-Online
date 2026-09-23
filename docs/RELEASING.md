@@ -2,7 +2,7 @@
 
 ## Zählung und historische Zuordnung
 
-Die öffentliche Folge ist **v0.1, v0.2, … v0.10, v0.11, … v0.100**. `releases.json` enthält Version, Datum und verständliche deutsche Änderungen in absteigender Reihenfolge. Es ist die einzige redaktionelle Versionsquelle. npm benötigt dreiteilige SemVer: öffentliches **v0.11** entspricht technisch `package.json`/Lock **0.11.0**. `version.json` liefert `{version:"0.11.0",label:"0.11"}`; alte v0.0.x-Installationen können den dreiteiligen Wert noch erkennen. App, Cache und neues GitHub Release zeigen v0.11. `release:check` und der Pages-Build sperren Abweichungen.
+Die öffentliche Folge ist **v0.1, v0.2, … v0.10, v0.11, v0.12, … v0.100**. `releases.json` enthält Version, Datum und verständliche deutsche Änderungen in absteigender Reihenfolge. Es ist die einzige redaktionelle Versionsquelle. npm benötigt dreiteilige SemVer: öffentliches **v0.12** entspricht technisch `package.json`/Lock **0.12.0**. `version.json` liefert `{version:"0.12.0",label:"0.12"}`; alte v0.0.x-Installationen können den dreiteiligen Wert noch erkennen. App, Cache und neues GitHub Release zeigen v0.12. `release:check` und der Pages-Build sperren Abweichungen.
 
 | Öffentliche Version | Commit des damaligen Stands | Datum | Inhalt |
 | --- | --- | --- | --- |
@@ -16,8 +16,9 @@ Die öffentliche Folge ist **v0.1, v0.2, … v0.10, v0.11, … v0.100**. `releas
 | v0.8 | `fb0e15a` | 23.09.2026 | Safari-App-Shell und Updates; PR #4 |
 | v0.9 | `63b9b1c` | 23.09.2026 | drei Phasen Tischkomfort; PR #5 |
 | v0.10 | `b35831a` | 23.09.2026 | automatische Update-Hinweise; PR #6 |
+| v0.11 | `741bb58` | 23.09.2026 | korrigierte Historie und Repository-Struktur; PR #7 |
 
-Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` zeigt auf den damaligen v0.7-Stand; ein Umhängen würde die Git-Historie verfälschen. Historische `v0.x`-Tags dürfen nur zusätzlich auf die in der Tabelle geprüften Commits gesetzt werden. Die in der App rückwirkend berichtigte Historie schreibt keine Commits um.
+Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` zeigt auf den damaligen v0.7-Stand; ein Umhängen würde die Git-Historie verfälschen. Die zusätzlichen historischen Tags `v0.1` bis `v0.10` zeigen auf die in der Tabelle geprüften Commits. Die in der App rückwirkend berichtigte Historie schreibt keine Commits um.
 
 ## Jeden Release vorbereiten
 
@@ -25,7 +26,7 @@ Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` ze
 2. Deutsche Hinweise mit **der nächsten freien** öffentlichen Nummer vorbereiten, zum Beispiel:
 
    ```sh
-   npm run release:prepare -- 0.12 "Änderung für Spieler" "Weitere Änderung"
+   npm run release:prepare -- 0.13 "Änderung für Spieler" "Weitere Änderung"
    ```
 
    Das Skript schreibt `releases.json`, `package.json` und `package-lock.json`. Datum und Texte prüfen. Tags niemals verschieben oder wiederverwenden.
