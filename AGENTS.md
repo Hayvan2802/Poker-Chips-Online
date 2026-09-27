@@ -15,6 +15,7 @@ Diese Datei gilt für das ganze Repository. Vor Änderungen [README.md](README.m
 - `src/online/`: Firebase Auth, Database, Presence und Host-Verarbeitung.
 - `src/device/`: geschützter Gerätespeicher und lokale Runden.
 - `src/updates/`, `shared/versioning.mjs`, `releases.json`: Update-Pfad und **eine** redaktionelle Versionsquelle.
+- `src/sw.ts`: kontrollierte App-Shell und versionierte Caches. Änderungen mit dem echten Mehrtab-Update-Test prüfen; niemals Caches laufender Alt-Clients oder neuer wartender Worker pauschal löschen.
 - `src/views/`, `src/components/`, `src/styles/`: mobile Oberfläche und App-Shell.
 - `scripts/`, `tests/`, `.github/workflows/pages.yml`: Release-Vertrag, Browser-/Emulator-Tests, Deploy.
 
@@ -27,3 +28,5 @@ Diese Datei gilt für das ganze Repository. Vor Änderungen [README.md](README.m
 5. Commit, Branch pushen, PR gegen `main` erstellen und CI auswerten. Fehler selbst reproduzieren, korrigieren und erneut prüfen. **Erst grünen PR mergen.** Main-Workflow prüft erneut, deployt Pages und erzeugt danach den passenden GitHub Release/Tag. Die Live-URL und Versionsantwort verifizieren.
 
 Nur `npm run deploy:rules` veröffentlicht Datenbankregeln, nach erfolgreichem Emulator-Test und bei beabsichtigter Rules-Änderung. Der alte pauschale Firebase-Deploy-Befehl darf nicht verwendet werden. Produktive Webwerte nicht in Logs, PR-Beschreibungen oder Antworten kopieren. Der Firebase-Web-API-Key ist öffentlich sichtbar und kein Ersatz für Regeln.
+
+Bei einer Änderung des Online-Protokolls die Rollout-Reihenfolge im PR angeben. Für v0.13 müssen die additiven Rules **vor** dem neuen Client veröffentlicht sein, damit Host-Antworten mit `fingerprint` akzeptiert werden; alte Clients bleiben mit diesen Rules kompatibel. Ohne beabsichtigten Produktions-Rollout endet eine Prüfung mit getestetem PR und dokumentiertem Deploy-Schritt.

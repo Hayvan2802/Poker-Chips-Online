@@ -2,7 +2,7 @@
 
 ## Zählung und historische Zuordnung
 
-Die öffentliche Folge ist **v0.1, v0.2, … v0.10, v0.11, v0.12, … v0.100**. `releases.json` enthält Version, Datum und verständliche deutsche Änderungen in absteigender Reihenfolge. Es ist die einzige redaktionelle Versionsquelle. npm benötigt dreiteilige SemVer: öffentliches **v0.12** entspricht technisch `package.json`/Lock **0.12.0**. `version.json` liefert `{version:"0.12.0",label:"0.12"}`; alte v0.0.x-Installationen können den dreiteiligen Wert noch erkennen. App, Cache und neues GitHub Release zeigen v0.12. `release:check` und der Pages-Build sperren Abweichungen.
+Die öffentliche Folge ist **v0.1, v0.2, … v0.11, v0.12, v0.13, … v0.100**. `releases.json` enthält Version, Datum und verständliche deutsche Änderungen in absteigender Reihenfolge. Es ist die einzige redaktionelle Versionsquelle. npm benötigt dreiteilige SemVer: öffentliches **v0.13** entspricht technisch `package.json`/Lock **0.13.0**. `version.json` liefert `{version:"0.13.0",label:"0.13"}`; alte v0.0.x-Installationen können den dreiteiligen Wert noch erkennen. App, Cache und neues GitHub Release zeigen v0.13. `release:check` und der Pages-Build sperren Abweichungen.
 
 | Öffentliche Version | Commit des damaligen Stands | Datum | Inhalt |
 | --- | --- | --- | --- |
@@ -17,6 +17,7 @@ Die öffentliche Folge ist **v0.1, v0.2, … v0.10, v0.11, v0.12, … v0.100**. 
 | v0.9 | `63b9b1c` | 23.09.2026 | drei Phasen Tischkomfort; PR #5 |
 | v0.10 | `b35831a` | 23.09.2026 | automatische Update-Hinweise; PR #6 |
 | v0.11 | `741bb58` | 23.09.2026 | korrigierte Historie und Repository-Struktur; PR #7 |
+| v0.12 | `a031ed3` | 24.09.2026 | Heads-up-Blinds und Gewinnmeldung; PR #8 |
 
 Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` zeigt auf den damaligen v0.7-Stand; ein Umhängen würde die Git-Historie verfälschen. Die zusätzlichen historischen Tags `v0.1` bis `v0.10` zeigen auf die in der Tabelle geprüften Commits. Die in der App rückwirkend berichtigte Historie schreibt keine Commits um.
 
@@ -26,7 +27,7 @@ Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` ze
 2. Deutsche Hinweise mit **der nächsten freien** öffentlichen Nummer vorbereiten, zum Beispiel:
 
    ```sh
-   npm run release:prepare -- 0.13 "Änderung für Spieler" "Weitere Änderung"
+   npm run release:prepare -- 0.14 "Änderung für Spieler" "Weitere Änderung"
    ```
 
    Das Skript schreibt `releases.json`, `package.json` und `package-lock.json`. Datum und Texte prüfen. Tags niemals verschieben oder wiederverwenden.
@@ -35,5 +36,11 @@ Die früheren Tags/Releases `v0.0.x` bleiben unverändert. Besonders `v0.0.1` ze
 5. Ein Push auf `main` baut und testet erneut, deployt das geprüfte `dist` via GitHub Actions nach Pages und legt **erst nach erfolgreichem Deploy** GitHub Release/Tag `v0.N` mit den Texten aus `releases.json` an. Nicht vorab einen gleichnamigen Tag setzen. Nach dem Lauf Root-URL, Raumlink und `version.json` live prüfen.
 
 GitHub **Settings → Pages → Source** muss auf **GitHub Actions** stehen. Produktionswerte müssen für den Build verfügbar sein; aktuell liegen die öffentlichen Firebase-Webwerte in `.env.production`. Werden sie aus dem Repository entfernt, müssen zuvor fünf `VITE_FIREBASE_*`-Werte reproduzierbar als Repository Variables/Secrets in den Workflow eingespeist werden. Die ausgelieferte Web-App enthält sie weiterhin. Datenbankregeln werden separat nach Emulatorprüfung mit `npm run deploy:rules` veröffentlicht; Pages übernimmt keine Rules.
+
+## Rollout von v0.13
+
+Dieser Prüfstand ändert das Host-Antwortformat um einen optionalen `fingerprint`. Nach grünen Emulator- und PR-Tests zuerst die additiven Datenbankregeln mit `npm run deploy:rules` veröffentlichen und den erfolgreichen Deploy bestätigen. Erst danach den Client-PR mergen und Pages veröffentlichen. Die Regeln akzeptieren weiterhin das bisherige Antwortformat; ein alter v0.12-Host bleibt funktionsfähig. Umgekehrt lehnen alte Rules die neuen Antworten ab. Deshalb den Client nicht vor den Rules veröffentlichen. Ein reiner Audit-PR führt selbst keinen produktiven Firebase-Deploy aus.
+
+Nach einer Veröffentlichung vorhandene Tische fortsetzen statt neu anlegen. Updates löschen keine Chipstände oder Auth-Identitäten. Bei einem Client-Rollback dürfen die additiven Rules bestehen bleiben; Versions-Tags werden nicht zurückgesetzt. Die normalen Smoke-Checks bleiben lesend und verwenden keine produktiven Tische als Testdaten.
 
 Falls Deployment oder Release-Erstellung nach einem grünen Build scheitert, denselben Workflow/Commit erneut starten und den Fehler im betroffenen Schritt beheben. Die Release-Aktion prüft vorhandene Tags und erzeugt keine neue Version für einen fehlgeschlagenen Deploy. Einen existierenden Tag nicht löschen oder verschieben, um den Job zu übergehen.

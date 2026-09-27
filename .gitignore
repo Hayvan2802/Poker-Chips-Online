@@ -8,4 +8,5 @@ firebase-debug.log
 *-debug.log
 ui-debug.log
 test-results/
+test-results-*/
 playwright-report/

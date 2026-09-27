@@ -1,8 +1,20 @@
 import {afterEach, describe, expect, it, vi} from 'vitest'
 import {actionId, safeRead, safeWrite} from '../src/device/browser'
 import {forgetRecentRoom, readRecentRoom, rememberRoom} from '../src/device/recentRoom'
+import {sessionCsv} from '../src/device/sessionExport'
 
 afterEach(() => vi.unstubAllGlobals())
+
+describe('session CSV export', () => {
+  it('preserves names and numbers while escaping quotes and commas', () => {
+    expect(sessionCsv([{name:'Jörg, "Ace"', hands:2, chips:150}])).toBe('\ufeffSpieler,Gewonnene Hände,Chips aus Pots\n"Jörg, ""Ace""",2,150')
+  })
+  it.each(['=1+1', '+1+1', '-1+1', '@SUM(1)', '  =1+1', '\t=1+1'])(
+    'exports a formula-like player name as literal text: %s', name => {
+      expect(sessionCsv([{name, hands:0, chips:0}])).toContain(`"'${name}",0,0`)
+    },
+  )
+})
 
 describe('Safari startup fallbacks', () => {
   it('renders without storage access and does not erase the existing player name', () => {

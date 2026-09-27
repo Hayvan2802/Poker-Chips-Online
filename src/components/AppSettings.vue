@@ -7,11 +7,12 @@ import {playerName, savePlayerName} from '../device/profile'
 import {highContrast, reducedMotion, soundEnabled} from '../device/preferences'
 import {updateState, initUpdates, dismissUpdate, installUpdate} from '../updates/updateManager'
 import {releasesSince} from '../updates/updates'
+import {isGameRoute} from '../updates/routeSafety'
 
 type Section = 'darstellung' | 'ton' | 'konto' | 'daten' | ''
 const route = useRoute(), router = useRouter()
 const settingsOpen = ref(false), historyOpen = ref(false), whatsNewOpen = ref(false)
-const canShowUpdate = computed(() => !whatsNewOpen.value && !settingsOpen.value && !historyOpen.value && !route.path.startsWith('/room/') && route.path !== '/local')
+const canShowUpdate = computed(() => !whatsNewOpen.value && !settingsOpen.value && !historyOpen.value && !isGameRoute(route.path))
 const expanded = ref<Section>('')
 const seenAtOpen = ref<string | null>(null)
 const current = releases[0]
@@ -25,7 +26,7 @@ function closeWhatsNew() {
 function openSettings() { expanded.value = ''; settingsOpen.value = true }
 function toggle(section: Section) { expanded.value = expanded.value === section ? '' : section }
 function maybeShowWhatsNew() {
-  if (!route.path.startsWith('/room/') && safeRead('poker-chips-seen-version') !== current.version) {
+  if (!isGameRoute(route.path) && safeRead('poker-chips-seen-version') !== current.version) {
     seenAtOpen.value = safeRead('poker-chips-seen-version')
     whatsNewOpen.value = true
   }

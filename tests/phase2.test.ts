@@ -37,7 +37,7 @@ describe('Turnierstufen, Antes und Cash-Abrechnung',()=>{
     r=command(r,'host','ready');r=command(r,'guest','ready');r=command(r,'host','start')
     r=command(r,'host','deal',{},t)
     r=command(r,'host','act',{move:{kind:'fold'}},t+1000)
-    r=command(r,'host','payout',{winners:[['guest'],['guest']]},t+2000)
+    r=command(r,'host','payout',{winners:[['guest']]},t+2000)
     r=command(r,'host','nextHand',{},t+61000)
     expect(r.blindClock?.breakUntil).toBe(t+121000)
     expect(()=>command(r,'host','deal',{},t+62000)).toThrow('Pause')

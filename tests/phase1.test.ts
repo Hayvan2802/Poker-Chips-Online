@@ -23,7 +23,7 @@ describe('Tischkorrekturen und Spielpausen', () => {
     let room = command(table(), 'host', 'deal')
     room = command(room, 'host', 'act', {move: {kind: 'fold'}})
     const before = JSON.stringify(room.game)
-    const winners = [['guest'], ['guest']]
+    const winners = [['guest']]
     room = command(room, 'host', 'payout', {winners})
     expect(room.game?.phase).toBe('settled')
     expect(room.history?.[`v${room.version}`]).toMatchObject({type: 'payout', handId: 1, winners})

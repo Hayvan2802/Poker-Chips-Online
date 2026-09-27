@@ -4,7 +4,7 @@ Pokerabend mit echten Karten und digitalen Chips für 2–9 Personen. Die mobile
 
 ## Starten
 
-Node.js 22 und für die Firebase-Emulatoren Java 21 installieren. Dann:
+Node.js ab 22.16 und für die Firebase-Emulatoren Java 21 installieren. Dann:
 
 ```sh
 npm ci
@@ -33,15 +33,18 @@ Das ist eine Vertrauensrunde: Die [Datenbankregeln](database.rules.json) sperren
 | `src/online/` | Firebase-Initialisierung, Auth, Presence und transaktionale Raumverarbeitung |
 | `src/device/` | Gerätespeicher, Profil, Einstellungen, Vorlagen und lokaler Tisch |
 | `src/updates/` | Versionsvergleich und kontrollierte PWA-Aktualisierung |
+| `src/sw.ts` | App-Shell, Offline-Dateien und schonende Cache-Bereinigung |
 | `src/views/`, `src/components/`, `src/styles/` | Seiten, wiederverwendbare Oberfläche und Design |
 | `shared/`, `releases.json` | gemeinsamer Versionsparser und deutsche Versionshistorie |
 | `scripts/`, `tests/`, `.github/workflows/` | Build-/Release-Prüfungen, Tests und Pages-Veröffentlichung |
 
 Details: [Architektur](docs/ARCHITECTURE.md) · [Tests](docs/TESTING.md) · [Veröffentlichung und Versionen](docs/RELEASING.md) · [Anleitung für Coding Agents](AGENTS.md).
 
+Die bestätigten Fehler, Korrekturen und Prüfgrenzen für v0.13 stehen im [Stabilitätsbericht vom 27.09.2026](docs/AUDIT-2026-09-27.md).
+
 ## Versionen
 
-Die sichtbaren Versionen zählen fortlaufend **v0.1, v0.2, … v0.10, v0.11, v0.12**. `releases.json` ist die Quelle für Versionsnummer, Datum und deutsche Hinweise. npm verlangt drei Zahlenteile, deshalb entspricht v0.12 intern `0.12.0`; `version.json` enthält beide Formen, damit ältere Installationen das Update erkennen. Der Service-Worker-Cache und das GitHub Release verwenden v0.12. Bereits vorhandene v0.0.x-Tags wurden nicht verschoben; die korrekten v0.1–v0.10-Tags wurden zusätzlich angelegt. Einzelheiten und die Zuordnung der historischen Commits stehen in [RELEASING.md](docs/RELEASING.md).
+Die sichtbaren Versionen zählen fortlaufend **v0.1, v0.2, … v0.11, v0.12, v0.13**. `releases.json` ist die Quelle für Versionsnummer, Datum und deutsche Hinweise. npm verlangt drei Zahlenteile, deshalb entspricht der vorbereitete Stand v0.13 intern `0.13.0`; `version.json` enthält beide Formen, damit ältere Installationen das Update erkennen. Der Service-Worker-Cache und das zugehörige GitHub Release verwenden v0.13. Bereits vorhandene v0.0.x-Tags wurden nicht verschoben; die korrekten v0.1–v0.10-Tags wurden zusätzlich angelegt. Einzelheiten und die Zuordnung der historischen Commits stehen in [RELEASING.md](docs/RELEASING.md).
 
 Die App prüft im Hintergrund alle 15 Sekunden auf neue Versionen und zeigt den Hinweis nur außerhalb laufender Tische. Aktualisiert wird erst nach Tippen auf **Aktualisieren & neu starten**. Die Versionshistorie steht unter **Einstellungen → Daten & App**. Spielername, Einstellungen, Firebase Auth und lokale Runden werden bei einem App-Update nicht gelöscht.
 

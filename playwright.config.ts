@@ -2,6 +2,8 @@ import {defineConfig, devices} from '@playwright/test'
 export default defineConfig({
   testDir: './tests/e2e',
   timeout: 20000,
+  // Bound parallel browser/network processes on Windows and small CI runners.
+  workers: process.env.CI ? 2 : 4,
   use: {baseURL: 'http://127.0.0.1:4173/Poker-Chips-Online/', trace: 'retain-on-failure'},
   projects: [
     {name: 'chromium', use: {...devices['Desktop Chrome']}},
