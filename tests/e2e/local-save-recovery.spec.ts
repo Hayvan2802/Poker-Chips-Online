@@ -12,6 +12,18 @@ async function expectPreserved(page:Page,raw:string) {
   await expect(page.locator('#boot-error')).toHaveCount(0)
 }
 
+async function confirmDeletion(page:Page,accept:boolean) {
+  const handled=page.waitForEvent('dialog').then(async dialog=>{
+    expect(dialog.type()).toBe('confirm')
+    expect(dialog.message()).toContain('wirklich löschen')
+    if(accept)await dialog.accept()
+    else await dialog.dismiss()
+  })
+  // Event listeners do not await asynchronous handlers. Finish the native dialog
+  // operation before checking storage or starting the next document reload.
+  await Promise.all([handled,page.getByRole('button',{name:'Beschädigten Spielstand löschen'}).click()])
+}
+
 for(const corruption of ['truncated JSON','empty string','null player','invalid previous big blind seat'] as const) {
   test(`${corruption} survives visits, reload, export and cancelled deletion until explicitly confirmed`,async({page})=>{
     const errors:string[]=[]
@@ -47,18 +59,12 @@ for(const corruption of ['truncated JSON','empty string','null player','invalid 
     expect(await readFile((await download.path())!)).toEqual(Buffer.from(raw,'utf8'))
     await expectPreserved(page,raw)
 
-    page.once('dialog',dialog=>dialog.dismiss())
-    await page.getByRole('button',{name:'Beschädigten Spielstand löschen'}).click()
+    await confirmDeletion(page,false)
     await expectPreserved(page,raw)
     await page.reload()
     await expectPreserved(page,raw)
 
-    page.once('dialog',async dialog=>{
-      expect(dialog.type()).toBe('confirm')
-      expect(dialog.message()).toContain('wirklich löschen')
-      await dialog.accept()
-    })
-    await page.getByRole('button',{name:'Beschädigten Spielstand löschen'}).click()
+    await confirmDeletion(page,true)
     await expect(page.getByRole('heading',{name:'Runde vorbereiten'})).toBeVisible()
     expect(await page.evaluate(key=>localStorage.getItem(key),key)).toBeNull()
     expect(await page.evaluate(()=>[localStorage.getItem('name'),localStorage.getItem('local-recovery-unrelated')])).toEqual(['Älex ♠','keep me'])
@@ -85,8 +91,7 @@ test('failed deletion keeps the original save and recovery controls available',a
   },{key,raw})
   await page.getByRole('link',{name:/Ohne Internet auf einem Gerät spielen/}).click()
   await expectPreserved(page,raw)
-  page.once('dialog',dialog=>dialog.accept())
-  await page.getByRole('button',{name:'Beschädigten Spielstand löschen'}).click()
+  await confirmDeletion(page,true)
   await expect(page.getByText('Der Spielstand konnte nicht gelöscht werden. Bitte versuche es erneut.')).toBeVisible()
   await expectPreserved(page,raw)
   await expect(page.getByRole('button',{name:'Spielstand herunterladen'})).toBeVisible()

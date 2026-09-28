@@ -22,6 +22,8 @@ Die Audit-Regressionsprüfungen decken zusätzlich kurze All-ins, Big-Blind-Ante
 
 Playwright verwendet vier lokale beziehungsweise zwei CI-Worker, um die parallele Last auf Browser- und Netzwerkprozesse zu begrenzen. Testartefakte liegen unter ignorierten `test-results*`-Verzeichnissen und gehören nicht in den Commit.
 
+Der Workflow lädt bei fehlgeschlagenen Prüfungen vorhandene Browser-Traces als `browser-test-failures` hoch (sieben Tage Aufbewahrung). Native Dialog-Aktionen in Tests vollständig abwarten, bevor eine Navigation oder ein Reload folgt. Nach einem Playwright-Update die zugehörigen Browser mitinstallieren. Blockiert die lokale Betriebssystemrichtlinie einen Browser, diese nicht abschalten; den fehlenden lokalen Nachweis benennen und die reguläre Linux-CI auswerten.
+
 Vor Änderungen an `src/game/engine.ts` zusätzlich Heads-up und Mehrspieler-Zugreihenfolge, Side Pots und Chip-Erhaltung prüfen. Vor Änderungen an `src/online/` ebenso Raumcode-Kollision, Gastrechte, konkurrierende Sitzwahl und erneute Hostverbindung prüfen. Bei einem fehlgeschlagenen CI-Lauf zuerst den konkreten Job/Schritt lesen, lokal reproduzieren und nur den betroffenen Fehler beheben; nach jeder Korrektur die betroffenen Tests und den vollständigen Pflichtsatz erneut ausführen.
 
 Browser-E2E kann iOS-Safari annähern, ersetzt aber keinen Test auf dem betroffenen iPhone. Für eine Geräteprüfung die veröffentlichte Root-URL und einen direkten Raumlink in Safari sowie als Home-Bildschirm-App öffnen, schließen und neu starten. Beim Update während einer Hand darf kein automatischer Reload stattfinden.
