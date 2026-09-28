@@ -82,10 +82,11 @@ describe('Poker state machine',()=>{
   const before=JSON.stringify(g);expect(()=>act(g,'a',{kind:'raise',to:200})).toThrow(/kurzer All-in/);expect(JSON.stringify(g)).toBe(before)
   act(g,'a',{kind:'call'});expect(g.phase).toBe('waiting-flop');assertChips(g)
  })
- it('allows a player who checked to raise a short opening all-in',()=>{
+ it('does not reopen a checked player after a short opening all-in',()=>{
   const g=createGame(ps,1000,25,50,0);g.phase='flop';g.turn='b';g.players.a.stack=1995;g.players.c.stack=5
-  act(g,'b',{kind:'check'});act(g,'c',{kind:'all-in'});act(g,'a',{kind:'call'});act(g,'b',{kind:'raise',to:50})
-  expect(g.highestBet).toBe(50);expect(g.turn).toBe('a');assertChips(g)
+  act(g,'b',{kind:'check'});act(g,'c',{kind:'all-in'});act(g,'a',{kind:'call'})
+  expect(()=>act(g,'b',{kind:'raise',to:55})).toThrow(/kurzer All-in/)
+  act(g,'b',{kind:'call'});expect(g.phase).toBe('waiting-turn');assertChips(g)
  })
  it('skips betting when both blinds are all-in and preserves manual card confirmations',()=>{
   const g=deal(createGame(ps.slice(0,2),5,5,10,0));expect(g.phase).toBe('waiting-flop');expect(g.turn).toBeNull()

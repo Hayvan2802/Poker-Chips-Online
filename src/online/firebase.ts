@@ -55,6 +55,7 @@ export async function watchRoom<T>(id: string, callbacks: {
   const services = requireFirebase()
   const user = await identity()
   let disposed = false
+  let connectionGeneration = 0
   let stopServing: (() => void) | undefined
   const presences = new Set<DatabaseReference>()
   const fail = (error: unknown) => {
@@ -81,6 +82,7 @@ export async function watchRoom<T>(id: string, callbacks: {
   })
   const stopConnection = onValue(ref(services.db, '.info/connected'), async snapshot => {
     if (disposed) return
+    const generation = ++connectionGeneration
     const connected = snapshot.val() === true
     callbacks.connection(connected)
     if (!connected) return
@@ -88,8 +90,11 @@ export async function watchRoom<T>(id: string, callbacks: {
     presences.add(presence)
     try {
       await onDisconnect(presence).remove()
-      if (!disposed) await set(presence, true)
-      if (disposed) await removePresence(presence)
+      if (disposed || generation !== connectionGeneration) { await removePresence(presence); return }
+      await set(presence, true)
+      // A write queued across a reconnect outlives its one-shot disconnect
+      // hook. Remove that old connection, leaving the new hook-backed entry.
+      if (disposed || generation !== connectionGeneration) await removePresence(presence)
     } catch (error) { fail(error) }
   }, fail)
   return () => {

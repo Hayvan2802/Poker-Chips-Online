@@ -15,7 +15,7 @@ function position(seat: number) {
 }
 function label(seat: number) {
   const player = at(seat)
-  if (!player) return `Platz ${seat + 1}: frei – hier sitzen`
+  if (!player) return `Platz ${seat + 1}: ${props.lobby ? 'frei – hier sitzen' : seat === props.dealer ? 'Dealer-Button liegt aus' : 'frei'}`
   return `Platz ${seat + 1}: ${player.name}${player.uid === props.myUid ? ', dein Platz' : ', belegt'}${props.lobby ? player.ready ? ', bereit' : ', noch nicht bereit' : ''}`
 }
 </script>
@@ -46,7 +46,7 @@ function label(seat: number) {
         </span>
         <span v-if="!lobby && at(seat - 1)!.roundBet" :key="at(seat - 1)!.roundBet" class="seat-bet" :aria-label="'Einsatz: ' + at(seat - 1)!.roundBet"><i aria-hidden="true"></i>{{at(seat - 1)!.roundBet?.toLocaleString('de-DE')}}</span>
       </template>
-      <template v-else><strong class="seat-name">{{lobby ? '+ Hier sitzen' : 'Frei'}}</strong></template>
+      <template v-else><strong class="seat-name">{{lobby ? '+ Hier sitzen' : !lobby && seat - 1 === dealer ? 'Button liegt aus' : 'Frei'}}</strong><span v-if="!lobby && seat - 1 === dealer" class="position-marker dealer-marker" title="Dealer-Position">D</span></template>
     </component>
   </div>
 </template>

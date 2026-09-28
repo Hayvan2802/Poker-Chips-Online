@@ -1,4 +1,11 @@
 import {test, expect} from '@playwright/test'
+import releases from '../../releases.json' with {type: 'json'}
+import {packageVersion, releaseNumber} from '../../shared/versioning.mjs'
+
+const currentVersion = releases[0].version
+const nextVersion = `0.${releaseNumber(currentVersion)! + 1}`
+const currentPackage = packageVersion(currentVersion)
+const nextPackage = packageVersion(nextVersion)
 
 async function closeWhatsNew(page: import('@playwright/test').Page) {
   const button = page.getByRole('button', {name: 'Alles klar'})
@@ -10,9 +17,9 @@ test('start page, reload, version and mobile settings work from the Pages build'
   const response = await page.goto('./')
   expect(response?.status()).toBe(200)
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
-  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.12?'})).toBeVisible()
+  await expect(page.getByRole('heading', {name: `Was ist neu in v${currentVersion}?`})).toBeVisible()
   await closeWhatsNew(page)
-  await expect(page.getByRole('button', {name: 'Nach einer neuen Version suchen'})).toContainText('v0.12')
+  await expect(page.getByRole('button', {name: 'Nach einer neuen Version suchen'})).toContainText(`v${currentVersion}`)
   if (testInfo.project.name === 'iphone-webkit') await page.screenshot({path: testInfo.outputPath('home-iphone.png'), fullPage: true})
   await page.getByRole('button', {name: 'Einstellungen öffnen'}).click()
   await expect(page.getByRole('heading', {name: 'Einstellungen'})).toBeVisible()
@@ -28,7 +35,7 @@ test('start page, reload, version and mobile settings work from the Pages build'
   await page.getByRole('button', {name: /Zurück/}).click()
   await page.reload()
   await expect(page.getByRole('heading', {name: /Der Pokerabend/})).toBeVisible()
-  await expect(page.getByRole('heading', {name: 'Was ist neu in v0.12?'})).toHaveCount(0)
+  await expect(page.getByRole('heading', {name: `Was ist neu in v${currentVersion}?`})).toHaveCount(0)
   await expect(page.locator('#boot-error')).toHaveCount(0)
 })
 
@@ -41,7 +48,7 @@ test('saved names and skipped release notes survive reloads', async ({page}) => 
   await page.evaluate(() => localStorage.setItem('poker-chips-seen-version', '0.0.5'))
   await page.reload()
   const notes = page.getByRole('dialog', {name: /Was ist neu/})
-  await expect(notes).toContainText('v0.12')
+  await expect(notes).toContainText(`v${currentVersion}`)
   await expect(notes).toContainText('v0.8')
   await expect(notes).toContainText('v0.7')
   await expect(notes).toContainText('v0.6')
@@ -58,7 +65,7 @@ test('automatic and manual version checks work without AbortSignal.timeout', asy
   await expect.poll(() => checks).toBeGreaterThan(0)
   const automaticChecks = checks
   await page.getByRole('button', {name: 'Nach einer neuen Version suchen'}).click()
-  await expect(page.getByRole('status')).toContainText('Du bist auf dem neuesten Stand (v0.12).')
+  await expect(page.getByRole('status')).toContainText(`Du bist auf dem neuesten Stand (v${currentVersion}).`)
   expect(checks).toBeGreaterThan(automaticChecks)
 })
 
@@ -78,33 +85,33 @@ test('the recent table shortcut survives reload and can be removed locally', asy
 test('a new version appears automatically and dismissal does not repeat every 15 seconds', async ({page}) => {
   await page.clock.install()
   let checks = 0
-  await page.route('**/version.json?*', route => { checks++; return route.fulfill({json: {version: '0.13.0', label: '0.13'}}) })
+  await page.route('**/version.json?*', route => { checks++; return route.fulfill({json: {version: nextPackage, label: nextVersion}}) })
   await page.goto('./')
   await closeWhatsNew(page)
   const original = page.url()
-  await expect(page.getByRole('dialog', {name: /v0.13 ist da/})).toBeVisible()
+  await expect(page.getByRole('dialog', {name: `v${nextVersion} ist da`})).toBeVisible()
   await page.getByRole('button', {name: 'Später'}).click()
-  await expect(page.getByRole('dialog', {name: /v0.13 ist da/})).toHaveCount(0)
+  await expect(page.getByRole('dialog', {name: `v${nextVersion} ist da`})).toHaveCount(0)
   await page.clock.fastForward(15_000)
   await expect.poll(() => checks).toBeGreaterThan(1)
-  await expect(page.getByRole('dialog', {name: /v0.13 ist da/})).toHaveCount(0)
+  await expect(page.getByRole('dialog', {name: `v${nextVersion} ist da`})).toHaveCount(0)
   expect(page.url()).toBe(original)
   await page.getByRole('button', {name: 'Nach einer neuen Version suchen'}).click()
-  await expect(page.getByRole('dialog', {name: /v0.13 ist da/})).toBeVisible()
+  await expect(page.getByRole('dialog', {name: `v${nextVersion} ist da`})).toBeVisible()
 })
 
 test('a background update notice waits until the local game returns to the menu', async ({page}) => {
   await page.clock.install()
-  let latest = '0.12.0'
-  await page.route('**/version.json?*', route => route.fulfill({json: {version: latest, label: latest === '0.12.0' ? '0.12' : '0.13'}}))
+  let latest = currentPackage
+  await page.route('**/version.json?*', route => route.fulfill({json: {version: latest, label: latest === currentPackage ? currentVersion : nextVersion}}))
   await page.goto('./')
   await closeWhatsNew(page)
   await page.getByRole('link',{name:/Ohne Internet auf einem Gerät spielen/}).click()
-  latest = '0.13.0'
+  latest = nextPackage
   await page.clock.fastForward(15_000)
-  await expect(page.getByRole('dialog',{name:/v0.13 ist da/})).toHaveCount(0)
+  await expect(page.getByRole('dialog',{name:`v${nextVersion} ist da`})).toHaveCount(0)
   await page.getByRole('link',{name:/Zur Startseite/}).click()
-  await expect(page.getByRole('dialog',{name:/v0.13 ist da/})).toBeVisible()
+  await expect(page.getByRole('dialog',{name:`v${nextVersion} ist da`})).toBeVisible()
 })
 
 test('manifest, worker and offline shell stay inside the GitHub Pages scope', async ({page, context}, testInfo) => {
@@ -120,11 +127,11 @@ test('manifest, worker and offline shell stay inside the GitHub Pages scope', as
   await page.evaluate(() => navigator.serviceWorker.ready)
   await page.reload()
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true)
-  const cachedShell = await page.evaluate(async () => {
-    const cache = await caches.open((await caches.keys()).find(name => name.includes('poker-chips-v0.12-precache')) || '')
+  const cachedShell = await page.evaluate(async (currentVersion) => {
+    const cache = await caches.open((await caches.keys()).find(name => name.includes(`poker-chips-v${currentVersion}-precache`)) || '')
     const page = await cache.match(new URL('index.html', location.href), {ignoreSearch: true})
     return page?.text()
-  })
+  }, currentVersion)
   expect(cachedShell).toContain('<div id="app"')
   if (testInfo.project.name === 'chromium') {
     await context.setOffline(true)

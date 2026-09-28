@@ -1,4 +1,4 @@
-import { onValue, ref, remove, runTransaction, serverTimestamp, set, type Database } from 'firebase/database'
+import { get, onValue, ref, remove, runTransaction, serverTimestamp, set, type Database } from 'firebase/database'
 import { actionKey, applyRequest, applyTurnTimeout, cleanName, newRoom, ROOM_ROOT, roomCode, type RoomRequest, type RoomState } from '../game/roomCore'
 
 async function generatedCode(uid: string, actionId: string, attempt: number) {
@@ -36,21 +36,73 @@ export async function createRoom(db: Database, uid: string, name: string, action
   throw Error('Kein Raumcode verfügbar. Bitte erneut versuchen')
 }
 
-interface Response {ok: boolean; version?: number; error?: string}
+interface Response {ok: boolean; version?: number; error?: string; fingerprint?: string}
+// RTDB omits empty containers/nulls and can return numeric-keyed objects as
+// arrays. Compare the stored value, independently of JavaScript key order.
+function storedValue(value: any): any {
+  if (value === null || typeof value !== 'object') return value
+  const entries = Object.keys(value).sort().map(key => [key, storedValue(value[key])])
+    .filter(([, child]) => child !== null)
+  return entries.length ? Object.fromEntries(entries) : null
+}
+function requestFingerprint(kind: RoomRequest['kind'], payload: Record<string, any>) {
+  return JSON.stringify([kind, storedValue(payload)])
+}
 function waitForConnection(db: Database) {
   return new Promise<void>((resolve, reject) => {
-    let stop: (() => void) | undefined
-    const timer = setTimeout(() => { stop?.(); reject(Error('Keine Verbindung zu Firebase. Bitte erneut versuchen')) }, 8000)
+    let settled = false, stop: (() => void) | undefined
+    const finish = (error?: Error) => {
+      if (settled) return
+      settled = true; clearTimeout(timer); stop?.()
+      if (error) reject(error)
+      else resolve()
+    }
+    const timer = setTimeout(() => finish(Error('Keine Verbindung zu Firebase. Bitte erneut versuchen')), 8000)
     stop = onValue(ref(db, '.info/connected'), snapshot => {
-      if (snapshot.val() === true) { clearTimeout(timer); stop?.(); resolve() }
-    }, error => { clearTimeout(timer); stop?.(); reject(error) })
+      if (snapshot.val() === true) finish()
+    }, error => finish(error))
+    if (settled) stop()
   })
 }
+const pendingRequests = new WeakMap<Database, Map<string, {fingerprint: string; result: Promise<{roomId: string; version?: number}>}>>()
 export async function submitRequest(db: Database, uid: string, code: string, kind: RoomRequest['kind'], payload: Record<string, any>, actionId: string) {
   roomCode(code); actionKey(actionId)
-  await waitForConnection(db)
+  let pending = pendingRequests.get(db)
+  if (!pending) { pending = new Map(); pendingRequests.set(db, pending) }
+  const key = `${code}/${uid}/${actionId}`, fingerprint = requestFingerprint(kind, payload)
+  const existing = pending.get(key)
+  if (existing) {
+    if (existing.fingerprint !== fingerprint) throw Error('actionId wurde bereits verwendet')
+    return existing.result
+  }
+  const result = sendRequest(db, uid, code, kind, payload, actionId).finally(() => {
+    if (pending.get(key)?.result === result) pending.delete(key)
+  })
+  pending.set(key, {fingerprint, result})
+  return result
+}
+async function sendRequest(db: Database, uid: string, code: string, kind: RoomRequest['kind'], payload: Record<string, any>, actionId: string) {
+  roomCode(code); actionKey(actionId)
   const requestRef = ref(db, `${ROOM_ROOT}/requests/${code}/${uid}/${actionId}`)
   const responseRef = ref(db, `${ROOM_ROOT}/responses/${code}/${uid}/${actionId}`)
+  const fingerprint = requestFingerprint(kind, payload)
+  const matchingResponse = async (response: Response) => {
+    if (response.fingerprint !== undefined) {
+      if (response.fingerprint !== fingerprint) throw Error('actionId wurde bereits verwendet')
+    } else if (response.ok) {
+      // Existing v0.12 hosts/responses have no fingerprint. Their committed
+      // receipt still binds success to the original command and sender.
+      const receipt = (await get(ref(db, `${ROOM_ROOT}/rooms/${code}/processed/${actionId}`))).val()
+      let matches = false
+      try {
+        const [oldKind, oldPayload] = JSON.parse(receipt?.fingerprint)
+        matches = receipt.uid === uid && requestFingerprint(oldKind, oldPayload) === fingerprint
+      } catch { /* A missing/expired receipt cannot prove this retry succeeded. */ }
+      if (!matches) throw Error('actionId kann nicht mehr bestätigt werden. Bitte den Tisch prüfen und erneut versuchen.')
+    }
+    if (!response.ok) throw Error(response.error || 'Anfrage abgelehnt')
+    return {roomId: code, version: response.version}
+  }
   return new Promise<{roomId: string; version?: number}>((resolve, reject) => {
     let settled = false, stop: (() => void) | undefined
     const finish = (error?: Error, response?: Response) => {
@@ -60,14 +112,55 @@ export async function submitRequest(db: Database, uid: string, code: string, kin
       else resolve({roomId: code, version: response?.version})
     }
     const timer = setTimeout(() => {
-      finish(Error('Der Host antwortet nicht. Der Host muss den Tisch geöffnet lassen. Prüfe den Tisch und versuche es erneut.'))
-      void remove(requestRef).catch(() => {})
+      // A deadline cannot cancel a Firebase write already in flight. Only the
+      // host removes shared request slots: another tab may still await this one.
+      finish(Error('Die Bestätigung vom Host fehlt. Die Aktion kann bereits ausgeführt worden sein oder noch eintreffen. Prüfe den Tisch, bevor du sie erneut ausführst.'))
     }, 30000)
-    stop = onValue(responseRef, snapshot => {
-      const response = snapshot.val() as Response | null
-      if (response) finish(response.ok ? undefined : Error(response.error || 'Anfrage abgelehnt'), response)
-    }, error => finish(error))
-    void set(requestRef, {uid, actionId, kind, payload, createdAt: serverTimestamp()}).catch(error => finish(error))
+    void (async () => {
+      // Reads can stay pending through a disconnect too. The same deadline
+      // covers connection, cached responses, receipt checks and queued writes.
+      await waitForConnection(db)
+      if (settled) return
+      const cached = (await get(responseRef)).val() as Response | null
+      if (settled) return
+      if (cached) {
+        await matchingResponse(cached)
+        finish(undefined, cached)
+        return
+      }
+      const existing = (await get(requestRef)).val() as RoomRequest | null
+      if (settled) return
+      if (existing) {
+        if (existing.uid !== uid || requestFingerprint(existing.kind, existing.payload) !== fingerprint) throw Error('actionId wurde bereits verwendet')
+      } else {
+        try {
+          await set(requestRef, {uid, actionId, kind, payload, createdAt: serverTimestamp()})
+        } catch (error) {
+          if (settled) return
+          // Requests are immutable. Another tab/retry may already own this slot;
+          // only an identical request may wait for its response.
+          const pending = (await get(requestRef)).val() as RoomRequest | null
+          if (settled) return
+          if (pending) {
+            if (pending.uid !== uid || requestFingerprint(pending.kind, pending.payload) !== fingerprint) throw Error('actionId wurde bereits verwendet')
+          } else {
+            const completed = (await get(responseRef)).val() as Response | null
+            if (settled) return
+            if (!completed) throw error
+            await matchingResponse(completed)
+            finish(undefined, completed)
+            return
+          }
+        }
+      }
+      if (settled) return
+      stop = onValue(responseRef, snapshot => {
+        if (settled) return
+        const response = snapshot.val() as Response | null
+        if (response) void matchingResponse(response).then(() => finish(undefined, response), error => finish(error))
+      }, error => finish(error))
+      if (settled) stop()
+    })().catch(error => finish(error))
   })
 }
 
@@ -115,6 +208,7 @@ export function serveRoom(db: Database, uid: string, code: string, reportError: 
           response = {ok: true, version: tx.snapshot.val().version}
         } catch (error) { response = {ok: false, error: error instanceof Error ? error.message : 'Anfrage abgelehnt'} }
         if (stopped) break
+        response.fingerprint = requestFingerprint(request.kind, request.payload)
         await set(ref(db, `${ROOM_ROOT}/responses/${code}/${sender}/${id}`), response)
         await remove(ref(db, `${ROOM_ROOT}/requests/${code}/${sender}/${id}`))
       }

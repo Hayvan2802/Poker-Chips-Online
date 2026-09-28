@@ -1,8 +1,8 @@
 export const MAX_SEATS = 9
 export type Phase = 'waiting-deal'|'preflop'|'waiting-flop'|'flop'|'waiting-turn'|'turn'|'waiting-river'|'river'|'showdown'|'settled'
-export interface Player { uid:string; name:string; seat:number; stack:number; folded:boolean; allIn:boolean; roundBet:number; handBet:number; actedAtBet:number; sittingOut?:boolean }
+export interface Player { uid:string; name:string; seat:number; stack:number; folded:boolean; allIn:boolean; roundBet:number; handBet:number; actedAtBet:number; sittingOut?:boolean; anteBet?:number }
 export interface Pot { amount:number; eligible:string[] }
-export interface Game { handId:number; dealer:number; sb:number; bb:number; ante?:number; anteMode?:'each'|'bb'; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean; smallBlindSeat?:number; bigBlindSeat?:number }
+export interface Game { handId:number; dealer:number; sb:number; bb:number; ante?:number; anteMode?:'each'|'bb'; phase:Phase; turn:string|null; highestBet:number; minRaise:number; players:Record<string,Player>; pots:Pot[]; totalChips:number; paid:boolean; smallBlindSeat?:number; bigBlindSeat?:number; previousBigBlindSeat?:number; pendingDealerSeat?:number }
 export type Move={kind:'fold'|'check'|'call'|'bet'|'raise'|'all-in';to?:number}
 
 const seated = (g:Game) => Object.values(g.players).sort((a,b)=>a.seat-b.seat)
@@ -15,11 +15,18 @@ export const next = (g:Game, seat:number, predicate=active) => {
 }
 export function blindPositions(g:Game): {small?:number;big?:number} {
   // Preserve the actual chips' positions until the hand is over, even if a player busts.
-  if (g.phase !== 'waiting-deal' && g.smallBlindSeat !== undefined && g.bigBlindSeat !== undefined) {
+  if (g.phase !== 'waiting-deal' && g.bigBlindSeat !== undefined) {
     return {small:g.smallBlindSeat,big:g.bigBlindSeat}
   }
   const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
   if(playing.length<2)return {}
+  // Follow the big blind, even when the preceding small blind or button is dead.
+  // This optional anchor leaves saved hands from older app versions readable.
+  if(g.previousBigBlindSeat!==undefined){
+    const big=next(g,g.previousBigBlindSeat,p=>playing.includes(p))!
+    const small=playing.length===2?playing.find(p=>p!==big):playing.find(p=>p.seat===g.previousBigBlindSeat)
+    return {small:small?.seat,big:big.seat}
+  }
   const dealer=playing.find(p=>p.seat===g.dealer)??next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)
   if(!dealer)return {}
   const small=playing.length===2?dealer:next(g,dealer.seat,p=>p.stack>0&&!p.sittingOut)
@@ -32,7 +39,7 @@ export function tableChampion(g:Game): Player | null {
 }
 export function assertChips(g:Game){
   const ps=seated(g)
-  if(ps.some(p=>![p.stack,p.handBet,p.roundBet].every(integer)||p.roundBet>p.handBet)
+  if(ps.some(p=>![p.stack,p.handBet,p.roundBet,p.anteBet??0].every(integer)||p.roundBet+(p.anteBet??0)>p.handBet)
     ||ps.reduce((sum,p)=>sum+p.stack+p.handBet,0)!==g.totalChips)throw Error('Chip-Erhaltung verletzt')
 }
 export function createGame(players:Array<Pick<Player,'uid'|'name'|'seat'>>, stack:number, sb:number, bb:number, dealer:number, ante=0, anteMode:'each'|'bb'='each'):Game {
@@ -45,7 +52,13 @@ export function createGame(players:Array<Pick<Player,'uid'|'name'|'seat'>>, stac
   return {handId:1,dealer,sb,bb,ante,anteMode,phase:'waiting-deal',turn:null,highestBet:0,minRaise:bb,players:map,pots:[],totalChips:stack*players.length,paid:false}
 }
 function commit(p:Player, amount:number){const paid=Math.min(amount,p.stack);p.stack-=paid;p.roundBet+=paid;p.handBet+=paid;p.allIn=p.stack===0;return paid}
-function commitDead(p:Player, amount:number){const paid=Math.min(amount,p.stack);p.stack-=paid;p.handBet+=paid;p.allIn=p.stack===0;return paid}
+function commitDead(p:Player, amount:number){const paid=Math.min(amount,p.stack);p.stack-=paid;p.handBet+=paid;p.anteBet=(p.anteBet??0)+paid;p.allIn=p.stack===0;return paid}
+export const minimumRaiseTo=(g:Game)=>g.highestBet+g.minRaise
+export function canRaise(g:Game, player:Player|string|undefined):boolean {
+  const p=typeof player==='string'?g.players[player]:player
+  return !!p&&!g.paid&&['preflop','flop','turn','river'].includes(g.phase)&&active(p)
+    &&p.roundBet+p.stack>g.highestBet&&(p.actedAtBet<0||g.highestBet-p.actedAtBet>=g.minRaise)
+}
 function advanceRound(g:Game){
   for(const p of seated(g)){p.roundBet=0;p.actedAtBet=-1}
   g.highestBet=0;g.minRaise=g.bb;g.turn=null
@@ -62,14 +75,26 @@ export function deal(g:Game){
   if(g.phase!=='waiting-deal'||g.paid)throw Error('Die Karten wurden bereits bestätigt')
   const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
   if(playing.length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
-  let dealer=playing.find(p=>p.seat===g.dealer)
-  if(!dealer){dealer=next(g,g.dealer,p=>p.stack>0&&!p.sittingOut);if(!dealer)throw Error('Dealer fehlt');g.dealer=dealer.seat}
-  const heads=playing.length===2
-  const small=heads?dealer:next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!;const big=next(g,small.seat,p=>p.stack>0&&!p.sittingOut)!
-  g.smallBlindSeat=small.seat;g.bigBlindSeat=big.seat
-  if(g.ante){if(g.anteMode==='bb')commitDead(big,g.ante*playing.length);else for(const player of playing)commitDead(player,g.ante)}
-  commit(small,g.sb);commit(big,g.bb)
-  g.highestBet=Math.max(small.roundBet,big.roundBet);g.phase='preflop'
+  const positions=blindPositions(g)
+  const small=playing.find(p=>p.seat===positions.small),big=playing.find(p=>p.seat===positions.big)!
+  if(playing.length===2)g.dealer=small!.seat
+  else if(g.pendingDealerSeat!==undefined)g.dealer=g.pendingDealerSeat
+  else if(g.previousBigBlindSeat===undefined&&!playing.some(p=>p.seat===g.dealer))g.dealer=next(g,g.dealer,p=>playing.includes(p))!.seat
+  delete g.pendingDealerSeat
+  if(small)g.smallBlindSeat=small.seat;else delete g.smallBlindSeat
+  g.bigBlindSeat=big.seat
+  for(const player of seated(g)){player.folded=!playing.includes(player);player.anteBet=0}
+  // Single-payer antes are dead money; the big blind has priority if short.
+  if(g.anteMode==='bb'){
+    if(small)commit(small,g.sb)
+    commit(big,g.bb)
+    if(g.ante)commitDead(big,g.ante*playing.length)
+  }else{
+    if(g.ante)for(const player of playing)commitDead(player,g.ante)
+    if(small)commit(small,g.sb)
+    commit(big,g.bb)
+  }
+  g.highestBet=g.bb;g.minRaise=g.bb;g.phase='preflop'
   assignTurn(g,big.seat);assertChips(g);return g
 }
 export function act(g:Game,uid:string,move:Move){
@@ -86,10 +111,10 @@ export function act(g:Game,uid:string,move:Move){
     if(target===undefined||!integer(target)||target<=p.roundBet||target>p.roundBet+p.stack)throw Error('Ungültiger Betrag')
     if((move.kind==='raise'||move.kind==='bet')&&target<=before)throw Error('Der Einsatz muss erhöht werden')
     if(target>before){
-      if(p.actedAtBet>0&&before-p.actedAtBet<g.minRaise)throw Error('Ein kurzer All-in eröffnet das Erhöhen nicht erneut')
-      const minimum=before<g.bb?g.bb:before+g.minRaise
+      if(!canRaise(g,p))throw Error('Ein kurzer All-in eröffnet das Erhöhen nicht erneut')
+      const minimum=minimumRaiseTo(g)
       if(target<minimum&&target!==p.roundBet+p.stack)throw Error(`Mindesterhöhung ist ${minimum}`)
-      if(target>=minimum)g.minRaise=before<g.bb?target:target-before
+      if(target>=minimum)g.minRaise=target-before
       g.highestBet=target
     }
     commit(p,target-p.roundBet)
@@ -105,8 +130,32 @@ export function reveal(g:Game){
   g.phase=phase;assignTurn(g,g.dealer);assertChips(g);return g
 }
 export function buildPots(g:Game):Pot[]{
-  const levels=[...new Set(seated(g).map(p=>p.handBet).filter(Boolean))].sort((a,b)=>a-b);let prev=0
-  return levels.map(level=>{const contributors=seated(g).filter(p=>p.handBet>=level);const pot={amount:(level-prev)*contributors.length,eligible:contributors.filter(p=>!p.folded).map(p=>p.uid)};prev=level;return pot}).filter(p=>p.amount>0)
+  const ps=seated(g)
+  // Old hands stored the single-payer ante only in handBet and posted it first.
+  // Its actual amount can be recovered from that payer's starting stack.
+  const dealt=ps.filter(p=>!p.sittingOut&&p.stack+p.handBet>0)
+  const legacyDealer=dealt.find(p=>p.seat===g.dealer)??next(g,g.dealer,p=>dealt.includes(p))
+  const legacySmall=dealt.length===2?legacyDealer:legacyDealer&&next(g,legacyDealer.seat,p=>dealt.includes(p))
+  const big=g.bigBlindSeat!==undefined?ps.find(p=>p.seat===g.bigBlindSeat):legacySmall&&next(g,legacySmall.seat,p=>dealt.includes(p))
+  const dead=g.anteMode==='bb'&&big?Math.min(big.handBet,big.anteBet??Math.min((g.ante??0)*dealt.length,big.stack+big.handBet)):0
+  const contribution=(p:Player)=>p.handBet-(p===big?dead:0)
+  const levels=[...new Set(ps.map(contribution).filter(Boolean))].sort((a,b)=>a-b)
+  const pots:Pot[]=[]
+  const append=(amount:number,eligible:string[])=>{
+    if(!amount)return
+    const last=pots[pots.length-1]
+    // Folded contributions do not create a distinct pot. Splitting them would
+    // award an extra odd chip every time the same winning hands tie.
+    if(last&&last.eligible.length===eligible.length&&last.eligible.every((id,i)=>id===eligible[i]))last.amount+=amount
+    else pots.push({amount,eligible})
+  }
+  append(dead,dealt.filter(p=>!p.folded).map(p=>p.uid))
+  let prev=0
+  for(const level of levels){
+    const contributors=ps.filter(p=>contribution(p)>=level)
+    append((level-prev)*contributors.length,contributors.filter(p=>!p.folded).map(p=>p.uid));prev=level
+  }
+  return pots
 }
 export function payout(g:Game,winners:string[][]){
   if(g.paid||g.phase!=='showdown')throw Error('Die Hand kann nicht ausgezahlt werden')
@@ -120,20 +169,29 @@ export function payout(g:Game,winners:string[][]){
     const order=seated(g).filter(p=>ws.includes(p.uid)&&p.seat>g.dealer).concat(seated(g).filter(p=>ws.includes(p.uid)&&p.seat<=g.dealer))
     for(let n=0;n<rest;n++)additions[order[n].uid]++
   })
-  for(const p of seated(g)){p.stack+=additions[p.uid]||0;p.handBet=0;p.roundBet=0;p.allIn=false}
+  for(const p of seated(g)){p.stack+=additions[p.uid]||0;p.handBet=0;p.roundBet=0;p.anteBet=0;p.allIn=false}
   g.pots=pots;g.paid=true;g.phase='settled';g.turn=null;g.highestBet=0;assertChips(g);return g
 }
 export function nextHand(g:Game){
   if(g.phase!=='settled'||!g.paid)throw Error('Zuerst die aktuelle Hand abrechnen')
   const playing=seated(g).filter(p=>p.stack>0&&!p.sittingOut)
   if(playing.length<2)throw Error('Mindestens zwei Spieler müssen aktiv sein')
-  // At the 3+ → 2 transition, the previous big blind takes the button if still in.
-  // Otherwise that player would have to post the big blind in consecutive hands.
-  const transitioningToHeadsUp=playing.length===2&&g.smallBlindSeat!==undefined&&g.smallBlindSeat!==g.dealer
-  const previousBig=playing.find(p=>p.seat===g.bigBlindSeat)
-  g.dealer=transitioningToHeadsUp&&previousBig?previousBig.seat:next(g,g.dealer,p=>p.stack>0&&!p.sittingOut)!.seat
+  if(g.bigBlindSeat!==undefined){
+    // The previous SB becomes the button, even if that seat is now empty.
+    // After a dead SB, its position was the previous hand's BB anchor.
+    const button=g.smallBlindSeat??g.previousBigBlindSeat??g.dealer
+    // A late entrant or returning player may change a prepared heads-up hand
+    // back to a multiway hand before the cards are dealt.
+    g.pendingDealerSeat=button
+    g.previousBigBlindSeat=g.bigBlindSeat
+    const big=next(g,g.previousBigBlindSeat,p=>playing.includes(p))!
+    g.dealer=playing.length===2?playing.find(p=>p!==big)!.seat:button
+  }else{
+    // Legacy saved hands without posted blind positions keep normal rotation.
+    g.dealer=next(g,g.dealer,p=>playing.includes(p))!.seat
+  }
   g.handId++;g.phase='waiting-deal';g.paid=false;g.turn=null;g.highestBet=0;g.minRaise=g.bb;g.pots=[]
-  for(const p of seated(g)){p.folded=p.stack===0||!!p.sittingOut;p.allIn=false;p.roundBet=0;p.handBet=0;p.actedAtBet=-1}
+  for(const p of seated(g)){p.folded=p.stack===0||!!p.sittingOut;p.allIn=false;p.roundBet=0;p.handBet=0;p.anteBet=0;p.actedAtBet=-1}
   assertChips(g);return g
 }
 

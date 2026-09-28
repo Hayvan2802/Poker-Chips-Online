@@ -2,6 +2,7 @@ import {reactive} from 'vue'
 import releases from '../../releases.json'
 import {isNewerVersion} from './updates'
 import {displayVersion} from '../../shared/versioning.mjs'
+import {isGameRoute} from './routeSafety'
 
 export const updateState = reactive({
   checking: false,
@@ -17,10 +18,17 @@ let manualRequested = false
 let dismissedVersion = ''
 const CHECK_INTERVAL_MS = 15_000
 
+function reportRunningVersion() {
+  try { navigator.serviceWorker?.controller?.postMessage({type:'APP_VERSION',version:releases[0].version}) }
+  catch { /* Cache retention is conservative when messaging is unavailable. */ }
+}
+
 export function initUpdates() {
   if (initialized) return
   initialized = true
   if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('controllerchange',reportRunningVersion)
+    reportRunningVersion()
     const register = () => {
       navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', {scope: import.meta.env.BASE_URL})
         .then(value => { registration = value })
@@ -30,6 +38,7 @@ export function initUpdates() {
     else window.addEventListener('load', register, {once: true})
   }
   const checkWhenVisible = () => {
+    reportRunningVersion()
     if (document.visibilityState === 'visible' && navigator.onLine) void checkForUpdate(true)
   }
   checkWhenVisible()
@@ -99,12 +108,17 @@ export function dismissUpdate() {
   updateState.available = false
 }
 
-export async function installUpdate() {
-  if (updateState.installing || !updateState.available) return
-  if (location.pathname.includes('/room/') || location.pathname.endsWith('/local')) {
+function canRestartForUpdate() {
+  if (isGameRoute(location.pathname, import.meta.env.BASE_URL)) {
     updateState.message = 'Bitte kehre zuerst zum Hauptmenü zurück.'
-    return
+    updateState.installing = false
+    return false
   }
+  return true
+}
+
+export async function installUpdate() {
+  if (updateState.installing || !updateState.available || !canRestartForUpdate()) return
   updateState.installing = true
   updateState.message = ''
   try {
@@ -114,7 +128,7 @@ export async function installUpdate() {
       const previousController = navigator.serviceWorker.controller
       // On a first visit no old worker controls the page; a normal reload is safe.
       if (registration && !registration.waiting && (!previousController || (registration.active && registration.active !== previousController))) {
-        location.reload()
+        if (canRestartForUpdate()) location.reload()
         return
       }
       if (registration && !registration.waiting) {
@@ -141,8 +155,9 @@ export async function installUpdate() {
         })
       }
       if (registration?.waiting) {
+        if (!canRestartForUpdate()) return
         let done = false
-        const reload = () => { if (!done) { done = true; location.reload() } }
+        const reload = () => { if (!done) { done = true; if (canRestartForUpdate()) location.reload() } }
         navigator.serviceWorker.addEventListener('controllerchange', reload, {once: true})
         registration.waiting.postMessage({type: 'SKIP_WAITING'})
         window.setTimeout(() => {
@@ -158,7 +173,7 @@ export async function installUpdate() {
       }
       if (registration) throw Error('Das Update wird noch vorbereitet. Bitte versuche es gleich erneut.')
     }
-    location.reload()
+    if (canRestartForUpdate()) location.reload()
   } catch (error) {
     updateState.message = error instanceof Error ? error.message : 'Das Update konnte nicht geladen werden.'
     updateState.installing = false

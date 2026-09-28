@@ -10,8 +10,9 @@ describe('Update safeguards',()=>{
     for(const value of ['0.0.1','0.0.0','garbage','1.0'])expect(isNewerVersion(value,'0.1')).toBe(false)
   })
   it('shows only the latest note on first install and migrates a legacy seen-version',()=>{
-    expect(releasesSince(releases,null).map(x=>x.version)).toEqual(['0.12'])
-    expect(releasesSince(releases,'0.0.5').map(x=>x.version)).toEqual(['0.12','0.11','0.10','0.9','0.8','0.7','0.6'])
+    expect(releasesSince(releases,null).map(x=>x.version)).toEqual([releases[0].version])
+    const historical = releases.filter(release=>['0.7','0.6','0.5','0.4'].includes(release.version))
+    expect(releasesSince(historical,'0.0.5').map(x=>x.version)).toEqual(['0.7','0.6'])
     expect(releasesSince(releases,releases[0].version)).toEqual([])
   })
 })

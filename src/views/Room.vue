@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { auth, command, firebaseError, watchRoom } from '../online/firebase'
-import { blindPositions, buildPots, tableChampion, type Move, type Phase } from '../game/engine'
+import { blindPositions, buildPots, canRaise as playerCanRaise, minimumRaiseTo, tableChampion, type Move, type Phase } from '../game/engine'
 import PokerTable from '../components/PokerTable.vue'
 import ChampionCelebration from '../components/ChampionCelebration.vue'
 import { blindCountdown, blindMinutes, blindMultiplier, raisedBlinds, validBlindPlan, validDenominations, type BlindSettings, type BlindStep } from '../game/blinds'
@@ -12,6 +12,7 @@ import {readPresets, writePresets, type TablePreset} from '../device/presets'
 import QRCode from 'qrcode'
 import {playCue} from '../device/sound'
 import {rememberRoom} from '../device/recentRoom'
+import {sessionCsv} from '../device/sessionExport'
 
 const id = String(useRoute().params.id)
 const roomLink = `${location.origin}${import.meta.env.BASE_URL}invite/${id}`
@@ -118,8 +119,8 @@ function eventText(entry: NonNullable<RoomState['history']>[string]) {
 }
 const callAmount = computed(() => Math.min(player.value?.stack || 0, Math.max(0, (game.value?.highestBet || 0) - (player.value?.roundBet || 0))))
 const maximumBet = computed(() => (player.value?.roundBet || 0) + (player.value?.stack || 0))
-const minimumBet = computed(() => game.value ? (game.value.highestBet < game.value.bb ? game.value.bb : game.value.highestBet + game.value.minRaise) : 0)
-const canRaise = computed(() => !!player.value && !!game.value && (player.value.actedAtBet < 0 || game.value.highestBet - player.value.actedAtBet >= game.value.minRaise))
+const minimumBet = computed(() => game.value ? minimumRaiseTo(game.value) : 0)
+const canRaise = computed(() => !!game.value && playerCanRaise(game.value, player.value))
 const canAllIn = computed(() => canRaise.value || maximumBet.value <= (game.value?.highestBet || 0))
 const bet = ref(0)
 const validBet = computed(() => Number.isSafeInteger(bet.value) && bet.value >= minimumBet.value && bet.value <= maximumBet.value)
@@ -215,7 +216,7 @@ watch(() => [game.value?.handId, game.value?.phase, me.value?.host], async () =>
 const sessionRows=computed(()=>Object.values(game.value?.players||{}).map(p=>({uid:p.uid,name:p.name,hands:room.value?.session?.winners[p.uid]?.hands||0,chips:room.value?.session?.winners[p.uid]?.chips||0})).sort((a,b)=>b.chips-a.chips))
 const recap=computed(()=>{const session=room.value?.session;return [`Poker Chips · Tisch ${id}`,`${session?.handsCompleted||0} Hände gespielt`, `Größter Pot: ${(session?.biggestPot||0).toLocaleString('de-DE')} Chips`,...sessionRows.value.map(p=>`${p.name}: ${p.hands} gewonnene Hände, ${p.chips.toLocaleString('de-DE')} Chips aus Pots`)].join('\n')})
 async function shareRecap(){try{if(navigator.share)await navigator.share({title:'Poker Chips Rückblick',text:recap.value});else await navigator.clipboard.writeText(recap.value)}catch(cause){if((cause as Error)?.name!=='AbortError')error.value='Rückblick konnte nicht geteilt werden.'}}
-function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',rows=sessionRows.value.map(p=>`"${p.name.replace(/"/g,'""')}",${p.hands},${p.chips}`).join('\n');const url=URL.createObjectURL(new Blob(['\ufeff',header,rows],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`poker-chips-${id}-rueckblick.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function exportRecap(){const url=URL.createObjectURL(new Blob([sessionCsv(sessionRows.value)],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`poker-chips-${id}-rueckblick.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 </script>
 
 <template>
@@ -289,7 +290,7 @@ function exportRecap(){const header='Spieler,Gewonnene Hände,Chips aus Pots\n',
       </aside>
     </div>
     <div v-else-if="game" class="table-wrap">
-      <div class="hand-heading"><span>Hand {{game.handId}}</span><span>Dealer: {{dealer?.name}}</span></div>
+      <div class="hand-heading"><span>Hand {{game.handId}}</span><span>Dealer: {{dealer?.name || 'Position ' + (game.dealer + 1)}}</span></div>
       <p v-if="lastAction?.type === 'autoFold'" class="auto-fold-notice" role="status">{{game.players[lastAction.uid]?.name}} hat nach 30 Sekunden automatisch gepasst.</p>
       <div class="blind-board" :class="{due: timerDue && !timerAtCap}">
         <div><small>{{timerEnabled ? 'LEVEL ' + (room.blindClock?.level || 1) : 'FESTE BLINDS'}}</small><strong>{{game.sb.toLocaleString('de-DE')}} <span>/</span> {{game.bb.toLocaleString('de-DE')}}</strong><span>Small Blind / Big Blind <template v-if="game.ante">· Ante {{game.ante}} {{game.anteMode==='bb' ? '(BB)' : '(alle)'}}</template></span></div>

@@ -22,6 +22,7 @@ export default defineConfig(({ command, mode }) => {
   }
   return {
   base,
+  define: {__POKER_CACHE_PREFIX__: JSON.stringify(`poker-chips-v${releases[0].version}`), __POKER_VERSION__: JSON.stringify(releases[0].version)},
   build: {target: 'es2018'},
   plugins: [
     {
@@ -36,6 +37,9 @@ export default defineConfig(({ command, mode }) => {
     },
     vue(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'prompt',
       injectRegister: null,
       manifest: {
@@ -49,7 +53,7 @@ export default defineConfig(({ command, mode }) => {
         scope: base,
         icons: [{ src: `${base}icon-192.png`, sizes: '192x192', type: 'image/png', purpose: 'any maskable' }, {src: `${base}icon-512.png`, sizes: '512x512', type: 'image/png', purpose: 'any maskable'}],
       },
-      workbox: { navigateFallback: `${base}index.html`, cacheId: `poker-chips-v${releases[0].version}`, cleanupOutdatedCaches: true, skipWaiting: false, clientsClaim: false, globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'], globIgnores: ['**/version.json'] },
+      injectManifest: {globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'], globIgnores: ['**/version.json']},
     }),
   ],
   }
